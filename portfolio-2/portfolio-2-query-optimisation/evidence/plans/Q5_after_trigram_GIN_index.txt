@@ -1,0 +1,18 @@
+-- Q5 [after] trigram GIN index
+-- result rows: 1; first row: (294094, 'Ebere', 'Abubakar', '+2348100054321')
+
+SELECT customer_id, first_name, last_name, phone
+FROM customers
+WHERE phone LIKE '%054321';
+
+Bitmap Heap Scan on customers  (cost=47.59..85.52 rows=10 width=36) (actual time=0.031..0.032 rows=1 loops=1)
+  Recheck Cond: ((phone)::text ~~ '%054321'::text)
+  Heap Blocks: exact=1
+  Buffers: shared hit=12
+  ->  Bitmap Index Scan on ix_customers_phone_trgm  (cost=0.00..47.59 rows=10 width=0) (actual time=0.030..0.030 rows=1 loops=1)
+        Index Cond: ((phone)::text ~~ '%054321'::text)
+        Buffers: shared hit=11
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.020 ms
+Execution Time: 0.035 ms

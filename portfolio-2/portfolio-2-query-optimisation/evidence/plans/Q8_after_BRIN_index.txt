@@ -1,0 +1,46 @@
+-- Q8 [after] BRIN index
+-- result rows: 10; first row: (204320, 'Tunde Okafor', 511, Decimal('90760326.80'))
+
+SELECT c.customer_id, c.first_name || ' ' || c.last_name AS customer,
+       count(*) AS transfers, sum(t.amount) AS total_sent
+FROM transactions t
+JOIN customers c ON c.customer_id = t.initiated_by
+WHERE t.transaction_type = 'EXTERNAL_TRANSFER'
+  AND t.status = 'SUCCESSFUL'
+  AND t.created_at >= TIMESTAMPTZ '2026-07-01' - INTERVAL '30 days'
+GROUP BY c.customer_id
+ORDER BY total_sent DESC
+LIMIT 10;
+
+Limit  (cost=45427.75..45427.78 rows=10 width=80) (actual time=64.759..64.764 rows=10 loops=1)
+  Buffers: shared hit=3385
+  ->  Sort  (cost=45427.75..45480.76 rows=21203 width=80) (actual time=64.758..64.762 rows=10 loops=1)
+        Sort Key: (sum(t.amount)) DESC
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=3385
+        ->  HashAggregate  (cost=44598.51..44969.56 rows=21203 width=80) (actual time=57.519..62.202 rows=15665 loops=1)
+              Group Key: c.customer_id
+              Batches: 1  Memory Usage: 7441kB
+              Buffers: shared hit=3385
+              ->  Hash Join  (cost=4152.19..44439.49 rows=21203 width=28) (actual time=24.625..49.476 rows=21876 loops=1)
+                    Hash Cond: (t.initiated_by = c.customer_id)
+                    Buffers: shared hit=3385
+                    ->  Bitmap Heap Scan on transactions t  (cost=26.06..40257.70 rows=21203 width=15) (actual time=0.259..17.480 rows=21876 loops=1)
+                          Recheck Cond: (created_at >= ('2026-07-01 00:00:00+01'::timestamp with time zone - '30 days'::interval))
+                          Rows Removed by Index Recheck: 674
+                          Filter: (((transaction_type)::text = 'EXTERNAL_TRANSFER'::text) AND ((status)::text = 'SUCCESSFUL'::text))
+                          Rows Removed by Filter: 60594
+                          Heap Blocks: lossy=1505
+                          Buffers: shared hit=1509
+                          ->  Bitmap Index Scan on brin_txn_created  (cost=0.00..20.75 rows=83532 width=0) (actual time=0.148..0.148 rows=15050 loops=1)
+                                Index Cond: (created_at >= ('2026-07-01 00:00:00+01'::timestamp with time zone - '30 days'::interval))
+                                Buffers: shared hit=4
+                    ->  Hash  (cost=2876.06..2876.06 rows=100006 width=21) (actual time=24.301..24.302 rows=100006 loops=1)
+                          Buckets: 131072  Batches: 1  Memory Usage: 6246kB
+                          Buffers: shared hit=1876
+                          ->  Seq Scan on customers c  (cost=0.00..2876.06 rows=100006 width=21) (actual time=0.005..9.054 rows=100006 loops=1)
+                                Buffers: shared hit=1876
+Planning:
+  Buffers: shared hit=17
+Planning Time: 0.253 ms
+Execution Time: 64.868 ms

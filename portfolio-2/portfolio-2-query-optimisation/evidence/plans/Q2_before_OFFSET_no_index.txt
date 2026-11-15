@@ -1,0 +1,43 @@
+-- Q2 [before] OFFSET, no index
+-- result rows: 50; first row: (datetime.datetime(2026, 1, 13, 4, 13, 17, 924728, tzinfo=zoneinfo.ZoneInfo(key='Africa/Lagos')), 'PH-B-00936709', 'WITHDRAWAL', 'DEBIT ', Decimal('15047.06'), Decimal('265776406.25'))
+
+SELECT le.created_at, t.reference, t.transaction_type, le.direction, le.amount, le.balance_after
+FROM ledger_entries le
+JOIN accounts a     ON a.account_id = le.account_id
+JOIN transactions t ON t.transaction_id = le.transaction_id
+WHERE a.account_number = '2000000001'
+ORDER BY le.created_at DESC, le.entry_id DESC
+OFFSET 10000 LIMIT 50;
+
+Limit  (cost=65100.48..65100.60 rows=1 width=67) (actual time=219.352..223.110 rows=50 loops=1)
+  Buffers: shared hit=86579 read=50926
+  ->  Gather Merge  (cost=65098.38..65100.48 rows=18 width=67) (actual time=217.469..222.793 rows=10050 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=86579 read=50926
+        ->  Sort  (cost=64098.36..64098.38 rows=9 width=67) (actual time=214.464..214.620 rows=3568 loops=3)
+              Sort Key: le.created_at DESC, le.entry_id DESC
+              Sort Method: quicksort  Memory: 1519kB
+              Buffers: shared hit=86579 read=50926
+              Worker 0:  Sort Method: quicksort  Memory: 1213kB
+              Worker 1:  Sort Method: quicksort  Memory: 888kB
+              ->  Nested Loop  (cost=8.88..64098.21 rows=9 width=67) (actual time=0.123..210.361 rows=7154 loops=3)
+                    Buffers: shared hit=86549 read=50926
+                    ->  Hash Join  (cost=8.45..64093.54 rows=9 width=47) (actual time=0.104..183.577 rows=7154 loops=3)
+                          Hash Cond: (le.account_id = a.account_id)
+                          Buffers: shared hit=695 read=50926
+                          ->  Parallel Seq Scan on ledger_entries le  (cost=0.00..61470.60 rows=995960 width=55) (actual time=0.008..108.549 rows=799269 loops=3)
+                                Buffers: shared hit=585 read=50926
+                          ->  Hash  (cost=8.44..8.44 rows=1 width=8) (actual time=0.042..0.043 rows=1 loops=3)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=14
+                                ->  Index Scan using accounts_account_number_key on accounts a  (cost=0.42..8.44 rows=1 width=8) (actual time=0.037..0.038 rows=1 loops=3)
+                                      Index Cond: (account_number = '2000000001'::bpchar)
+                                      Buffers: shared hit=14
+                    ->  Index Scan using transactions_pkey on transactions t  (cost=0.43..0.52 rows=1 width=36) (actual time=0.003..0.003 rows=1 loops=21463)
+                          Index Cond: (transaction_id = le.transaction_id)
+                          Buffers: shared hit=85854
+Planning:
+  Buffers: shared hit=12
+Planning Time: 0.273 ms
+Execution Time: 223.160 ms

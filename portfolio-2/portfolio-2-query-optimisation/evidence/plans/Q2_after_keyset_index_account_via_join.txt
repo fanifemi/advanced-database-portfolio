@@ -1,0 +1,39 @@
+-- Q2 [after] keyset + index (account via join)
+-- result rows: 50; first row: (datetime.datetime(2026, 1, 13, 4, 13, 17, 924728, tzinfo=zoneinfo.ZoneInfo(key='Africa/Lagos')), 'PH-B-00936709', 'WITHDRAWAL', 'DEBIT ', Decimal('15047.06'), Decimal('265776406.25'))
+
+SELECT le.created_at, t.reference, t.transaction_type, le.direction, le.amount, le.balance_after
+FROM ledger_entries le
+JOIN accounts a     ON a.account_id = le.account_id
+JOIN transactions t ON t.transaction_id = le.transaction_id
+WHERE a.account_number = '2000000001'
+  AND (le.created_at, le.entry_id) < ('2026-01-13T04:21:06.437567+01:00', 3753502)
+ORDER BY le.created_at DESC, le.entry_id DESC
+LIMIT 50;
+
+Limit  (cost=240.57..240.60 rows=12 width=67) (actual time=33.155..33.163 rows=50 loops=1)
+  Buffers: shared hit=53571
+  ->  Sort  (cost=240.57..240.60 rows=12 width=67) (actual time=33.153..33.158 rows=50 loops=1)
+        Sort Key: le.created_at DESC, le.entry_id DESC
+        Sort Method: top-N heapsort  Memory: 38kB
+        Buffers: shared hit=53571
+        ->  Nested Loop  (cost=5.85..240.36 rows=12 width=67) (actual time=1.794..29.154 rows=11463 loops=1)
+              Buffers: shared hit=53571
+              ->  Nested Loop  (cost=5.42..233.44 rows=12 width=47) (actual time=1.777..10.276 rows=11463 loops=1)
+                    Buffers: shared hit=7719
+                    ->  Index Scan using accounts_account_number_key on accounts a  (cost=0.42..8.44 rows=1 width=8) (actual time=0.010..0.013 rows=1 loops=1)
+                          Index Cond: (account_number = '2000000001'::bpchar)
+                          Buffers: shared hit=4
+                    ->  Bitmap Heap Scan on ledger_entries le  (cost=5.00..224.44 rows=56 width=55) (actual time=1.763..8.854 rows=11463 loops=1)
+                          Recheck Cond: ((account_id = a.account_id) AND (ROW(created_at, entry_id) < ROW('2026-01-13 04:21:06.437567+01'::timestamp with time zone, 3753502)))
+                          Heap Blocks: exact=7630
+                          Buffers: shared hit=7715
+                          ->  Bitmap Index Scan on ix_ledger_account_time  (cost=0.00..4.99 rows=56 width=0) (actual time=0.904..0.905 rows=11463 loops=1)
+                                Index Cond: ((account_id = a.account_id) AND (ROW(created_at, entry_id) < ROW('2026-01-13 04:21:06.437567+01'::timestamp with time zone, 3753502)))
+                                Buffers: shared hit=85
+              ->  Index Scan using transactions_pkey on transactions t  (cost=0.43..0.58 rows=1 width=36) (actual time=0.001..0.001 rows=1 loops=11463)
+                    Index Cond: (transaction_id = le.transaction_id)
+                    Buffers: shared hit=45852
+Planning:
+  Buffers: shared hit=28
+Planning Time: 0.325 ms
+Execution Time: 33.200 ms

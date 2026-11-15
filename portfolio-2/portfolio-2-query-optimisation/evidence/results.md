@@ -1,0 +1,35 @@
+| Query | Phase | Variant | Median ms | Buffers | Result | Main operators |
+|---|---|---|---:|---:|---|---|
+| Q1 | before | original | 186.05 | 52,145 | 50 rows | Sort; Nested Loop; Hash Join; Seq Scan on ledger_entries; Index Scan (accounts_account_number_key); Index Scan (transactions_pkey) |
+| Q1 | after | composite index | 0.33 | 623 | 50 rows | Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey) |
+| Q2 | before | OFFSET, no index | 216.88 | 137,505 | 50 rows | Sort; Nested Loop; Hash Join; Seq Scan on ledger_entries; Index Scan (accounts_account_number_key); Index Scan (transactions_pkey) |
+| Q2 | after | OFFSET + index | 115.22 | 100,316 | 50 rows | Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey) |
+| Q2 | after | keyset + index (account via join) | 34.26 | 53,571 | 50 rows | Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey) |
+| Q2 | after | keyset + index (account_id known) | 0.10 | 238 | 50 rows | Nested Loop; Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey) |
+| Q3 | before | original | 108.26 | 51,515 | 5942235.39 | Index Scan (accounts_account_number_key); Seq Scan on ledger_entries |
+| Q3 | after | covering index (index-only scan) | 0.03 | 9 | 5942235.39 | Index Scan (accounts_account_number_key); Index Only Scan (ix_ledger_account_time) |
+| Q4 | before | email = '...' (not sargable for lower() index) | 4.63 | 1,876 | 0 rows | Seq Scan on customers |
+| Q4 | after | lower(email) = lower('...') (uses functional index) | 0.01 | 4 | 1 rows | Index Scan (uq_customer_email_ci) |
+| Q5 | before | LIKE '%…' seq scan | 7.99 | 1,876 | 1 rows | Seq Scan on customers |
+| Q5 | after | trigram GIN index | 0.05 | 12 | 1 rows | Bitmap Heap Scan on customers; Bitmap Index Scan (ix_customers_phone_trgm) |
+| Q6 | before | original | 90.04 | 38,641 | 320 rows | Sort; Seq Scan on transactions |
+| Q6 | after | partial index | 0.06 | 29 | 320 rows | Index Scan (ix_txn_open_items) |
+| Q7 | before | full scan + aggregate | 83.71 | 38,577 | 17 rows | Sort; Seq Scan on transactions |
+| Q7 | after | BRIN index | 35.67 | 1,652 | 17 rows | Sort; Bitmap Heap Scan on transactions; Bitmap Index Scan (brin_txn_created) |
+| Q7 | after | materialized view | 0.02 | 2 | 17 rows | Sort; Seq Scan on mv_monthly_volume |
+| Q8 | before | original | 124.71 | 40,443 | 10 rows | Sort; Hash Join; Seq Scan on transactions; Seq Scan on customers |
+| Q8 | after | BRIN index | 61.19 | 3,385 | 10 rows | Sort; Hash Join; Bitmap Heap Scan on transactions; Bitmap Index Scan (brin_txn_created); Seq Scan on customers |
+| Q9 | before | NOT IN (subquery)  -- wrong result AND non-hashed SubPlan | 60,000.00 | 0 | cancelled after 60s | Seq Scan on customers; SubPlan: Seq Scan on transactions (re-scanned per customer) |
+| Q9 | after | NOT EXISTS (anti-join) | 83.57 | 20,561 | 15670 | Hash Join; Index Only Scan (ix_txn_initiated_by); Seq Scan on customers |
+
+| Query | Description | Before ms | Best after ms | Speed-up |
+|---|---|---:|---:|---:|
+| Q1 | Account statement — latest 50 lines (typical account) | 186.05 | 0.333 | 559× |
+| Q2 | Statement page 201 of the busiest account (rows 10,001-10,050) | 216.88 | 0.098 | 2,213× |
+| Q3 | Daily debit-limit check (sum of today's debits) | 108.26 | 0.029 | 3,733× |
+| Q4 | Support: find customer by email typed in mixed case | 4.63 | 0.005 | 926× |
+| Q5 | Support: find customer by last 6 digits of phone | 7.99 | 0.047 | 170× |
+| Q6 | Support dashboard: PENDING/FAILED transactions in last 24h | 90.04 | 0.061 | 1,476× |
+| Q7 | Report: March 2026 volume by type and channel | 83.71 | 0.018 | 4,650× |
+| Q8 | Report: top 10 external-transfer senders, last 30 days | 124.71 | 61.189 | 2× |
+| Q9 | Dormancy job: ACTIVE customers with no transaction since 1 March 2026 | 60,000.00 | 83.566 | 718× |

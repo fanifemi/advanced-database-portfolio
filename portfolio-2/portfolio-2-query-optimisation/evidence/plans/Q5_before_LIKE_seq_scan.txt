@@ -1,0 +1,13 @@
+-- Q5 [before] LIKE '%…' seq scan
+-- result rows: 1; first row: (294094, 'Ebere', 'Abubakar', '+2348100054321')
+
+SELECT customer_id, first_name, last_name, phone
+FROM customers
+WHERE phone LIKE '%054321';
+
+Seq Scan on customers  (cost=0.00..3126.07 rows=10 width=36) (actual time=7.572..8.037 rows=1 loops=1)
+  Filter: ((phone)::text ~~ '%054321'::text)
+  Rows Removed by Filter: 100005
+  Buffers: shared hit=1876
+Planning Time: 0.036 ms
+Execution Time: 8.044 ms

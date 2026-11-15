@@ -1,0 +1,41 @@
+-- Q7 [before] full scan + aggregate
+-- result rows: 17; first row: ('DEPOSIT', 'MOBILE', 16674, Decimal('1982557207.93'))
+
+SELECT transaction_type, channel, count(*) AS txn_count, sum(amount) AS total_amount
+FROM transactions
+WHERE status = 'SUCCESSFUL'
+  AND created_at >= '2026-03-01' AND created_at < '2026-04-01'
+GROUP BY transaction_type, channel
+ORDER BY total_amount DESC;
+
+Sort  (cost=47758.61..47758.65 rows=16 width=59) (actual time=87.118..88.169 rows=17 loops=1)
+  Sort Key: (sum(amount)) DESC
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=12326 read=26251
+  ->  Finalize GroupAggregate  (cost=47753.96..47758.29 rows=16 width=59) (actual time=87.077..88.155 rows=17 loops=1)
+        Group Key: transaction_type, channel
+        Buffers: shared hit=12326 read=26251
+        ->  Gather Merge  (cost=47753.96..47757.69 rows=32 width=59) (actual time=87.036..88.098 rows=49 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=12326 read=26251
+              ->  Sort  (cost=46753.93..46753.97 rows=16 width=59) (actual time=80.790..80.793 rows=16 loops=3)
+                    Sort Key: transaction_type, channel
+                    Sort Method: quicksort  Memory: 27kB
+                    Buffers: shared hit=12326 read=26251
+                    Worker 0:  Sort Method: quicksort  Memory: 26kB
+                    Worker 1:  Sort Method: quicksort  Memory: 26kB
+                    ->  Partial HashAggregate  (cost=46753.41..46753.61 rows=16 width=59) (actual time=80.753..80.762 rows=16 loops=3)
+                          Group Key: transaction_type, channel
+                          Batches: 1  Memory Usage: 24kB
+                          Buffers: shared hit=12310 read=26251
+                          Worker 0:  Batches: 1  Memory Usage: 24kB
+                          Worker 1:  Batches: 1  Memory Usage: 24kB
+                          ->  Parallel Seq Scan on transactions  (cost=0.00..46400.75 rows=35266 width=26) (actual time=12.111..72.888 rows=28224 loops=3)
+                                Filter: ((created_at >= '2026-03-01 00:00:00+01'::timestamp with time zone) AND (created_at < '2026-04-01 00:00:00+01'::timestamp with time zone) AND ((status)::text = 'SUCCESSFUL'::text))
+                                Rows Removed by Filter: 329345
+                                Buffers: shared hit=12310 read=26251
+Planning:
+  Buffers: shared hit=10
+Planning Time: 0.167 ms
+Execution Time: 88.223 ms

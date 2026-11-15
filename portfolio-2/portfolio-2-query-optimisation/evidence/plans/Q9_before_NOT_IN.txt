@@ -1,0 +1,22 @@
+-- Q9 [before] NOT IN (subquery)  -- wrong result AND non-hashed SubPlan
+-- outcome: cancelled after 60s (wall clock 60,000 ms)
+
+SELECT count(*)
+FROM customers c
+WHERE c.status = 'ACTIVE'
+  AND c.customer_id NOT IN (SELECT initiated_by FROM transactions WHERE created_at >= '2026-03-01');
+
+EXPLAIN (estimated plan — ANALYZE would take too long):
+Finalize Aggregate  (cost=1641506359.67..1641506359.68 rows=1 width=8)
+  ->  Gather  (cost=1641506359.56..1641506359.67 rows=1 width=8)
+        Workers Planned: 1
+        ->  Partial Aggregate  (cost=1641505359.56..1641505359.57 rows=1 width=8)
+              ->  Parallel Seq Scan on customers c  (cost=0.00..1641505286.77 rows=29116 width=0)
+                    Filter: (((status)::text = 'ACTIVE'::text) AND (NOT (SubPlan 1)))
+                    SubPlan 1
+                      ->  Materialize  (cost=0.00..54973.35 rows=333755 width=8)
+                            ->  Seq Scan on transactions  (cost=0.00..52000.57 rows=333755 width=8)
+                                  Filter: (created_at >= '2026-03-01 00:00:00+01'::timestamp with time zone)
+JIT:
+  Functions: 12
+  Options: Inlining true, Optimization true, Expressions true, Deforming true

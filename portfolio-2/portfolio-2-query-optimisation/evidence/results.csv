@@ -1,0 +1,22 @@
+query,phase,variant,median_ms,min_ms,planning_ms,buffers,est_rows,actual_rows,result,operators
+Q1,before,original,186.046,180.159,0.27,52145,18,50,50 rows,Sort; Nested Loop; Hash Join; Seq Scan on ledger_entries; Index Scan (accounts_account_number_key); Index Scan (transactions_pkey)
+Q2,before,"OFFSET, no index",216.877,203.01,0.359,137505,1,50,50 rows,Sort; Nested Loop; Hash Join; Seq Scan on ledger_entries; Index Scan (accounts_account_number_key); Index Scan (transactions_pkey)
+Q3,before,original,108.257,106.272,0.131,51515,1,1,5942235.39,Index Scan (accounts_account_number_key); Seq Scan on ledger_entries
+Q4,before,email = '...' (not sargable for lower() index),4.631,4.562,0.025,1876,1,0,0 rows,Seq Scan on customers
+Q5,before,LIKE '%…' seq scan,7.985,7.947,0.04,1876,10,1,1 rows,Seq Scan on customers
+Q6,before,original,90.042,84.355,0.122,38641,16,320,320 rows,Sort; Seq Scan on transactions
+Q7,before,full scan + aggregate,83.706,80.854,0.168,38577,16,17,17 rows,Sort; Seq Scan on transactions
+Q8,before,original,124.708,123.412,0.2,40443,10,10,10 rows,Sort; Hash Join; Seq Scan on transactions; Seq Scan on customers
+Q9,before,NOT IN (subquery)  -- wrong result AND non-hashed SubPlan,60000,60000,0,0,1,,cancelled after 60s,Seq Scan on customers; SubPlan: Seq Scan on transactions (re-scanned per customer)
+Q1,after,composite index,0.333,0.327,0.204,623,21,50,50 rows,Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey)
+Q2,after,OFFSET + index,115.225,113.229,0.388,100316,1,50,50 rows,Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey)
+Q2,after,keyset + index (account via join),34.264,33.554,0.318,53571,12,50,50 rows,Sort; Nested Loop; Index Scan (accounts_account_number_key); Bitmap Heap Scan on ledger_entries; Bitmap Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey)
+Q2,after,keyset + index (account_id known),0.098,0.087,0.122,238,50,50,50 rows,Nested Loop; Index Scan (ix_ledger_account_time); Index Scan (transactions_pkey)
+Q3,after,covering index (index-only scan),0.029,0.022,0.043,9,1,1,5942235.39,Index Scan (accounts_account_number_key); Index Only Scan (ix_ledger_account_time)
+Q4,after,lower(email) = lower('...') (uses functional index),0.005,0.005,0.013,4,1,1,1 rows,Index Scan (uq_customer_email_ci)
+Q5,after,trigram GIN index,0.047,0.037,0.019,12,10,1,1 rows,Bitmap Heap Scan on customers; Bitmap Index Scan (ix_customers_phone_trgm)
+Q6,after,partial index,0.061,0.056,0.052,29,14,320,320 rows,Index Scan (ix_txn_open_items)
+Q7,after,BRIN index,35.667,32.939,0.167,1652,16,17,17 rows,Sort; Bitmap Heap Scan on transactions; Bitmap Index Scan (brin_txn_created)
+Q7,after,materialized view,0.018,0.017,0.01,2,1,17,17 rows,Sort; Seq Scan on mv_monthly_volume
+Q8,after,BRIN index,61.189,59.602,0.315,3385,10,10,10 rows,Sort; Hash Join; Bitmap Heap Scan on transactions; Bitmap Index Scan (brin_txn_created); Seq Scan on customers
+Q9,after,NOT EXISTS (anti-join),83.566,80.665,0.266,20561,1,1,15670,Hash Join; Index Only Scan (ix_txn_initiated_by); Seq Scan on customers

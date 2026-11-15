@@ -1,0 +1,26 @@
+SET
+SET
+--- NULLs in the subquery for 2026-03-08 ---
+ null_initiators | rows_in_window 
+-----------------+----------------
+               1 |           2757
+(1 row)
+
+--- NOT IN: customers who did NOT transact on 2026-03-08 ---
+ not_in_result 
+---------------
+             0
+(1 row)
+
+--- NOT EXISTS: same question ---
+ not_exists_result 
+-------------------
+             97552
+(1 row)
+
+--- Why: x NOT IN (1, 2, NULL) is NULL (unknown), never TRUE ---
+ without_null | with_null 
+--------------+-----------
+ t            | 
+(1 row)
+

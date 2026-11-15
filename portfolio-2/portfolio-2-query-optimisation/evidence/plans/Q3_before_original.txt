@@ -1,0 +1,26 @@
+-- Q3 [before] original
+-- result rows: 1; first row: (Decimal('5942235.39'),)
+
+SELECT COALESCE(sum(le.amount), 0) AS debited_today
+FROM ledger_entries le
+WHERE le.account_id = (SELECT account_id FROM accounts WHERE account_number = '2000000001')
+  AND le.direction = 'DEBIT'
+  AND le.created_at >= '2026-03-16' AND le.created_at < '2026-03-17';
+
+Aggregate  (cost=72438.73..72438.74 rows=1 width=32) (actual time=102.943..105.058 rows=1 loops=1)
+  Buffers: shared hit=979 read=50536
+  InitPlan 1 (returns $0)
+    ->  Index Scan using accounts_account_number_key on accounts  (cost=0.42..8.44 rows=1 width=8) (actual time=0.023..0.025 rows=1 loops=1)
+          Index Cond: (account_number = '2000000001'::bpchar)
+          Buffers: shared hit=4
+  ->  Gather  (cost=1000.00..72430.29 rows=1 width=7) (actual time=36.008..105.030 rows=35 loops=1)
+        Workers Planned: 2
+        Params Evaluated: $0
+        Workers Launched: 2
+        Buffers: shared hit=979 read=50536
+        ->  Parallel Seq Scan on ledger_entries le  (cost=0.00..71430.19 rows=1 width=7) (actual time=54.912..99.394 rows=12 loops=3)
+              Filter: ((created_at >= '2026-03-16 00:00:00+01'::timestamp with time zone) AND (created_at < '2026-03-17 00:00:00+01'::timestamp with time zone) AND (account_id = $0) AND (direction = 'DEBIT'::bpchar))
+              Rows Removed by Filter: 799257
+              Buffers: shared hit=975 read=50536
+Planning Time: 0.131 ms
+Execution Time: 105.091 ms

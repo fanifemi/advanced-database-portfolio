@@ -1,0 +1,25 @@
+-- Q2 [after] keyset + index (account_id known)
+-- result rows: 50; first row: (datetime.datetime(2026, 1, 13, 4, 13, 17, 924728, tzinfo=zoneinfo.ZoneInfo(key='Africa/Lagos')), 'PH-B-00936709', 'WITHDRAWAL', 'DEBIT ', Decimal('15047.06'), Decimal('265776406.25'))
+
+SELECT le.created_at, t.reference, t.transaction_type, le.direction, le.amount, le.balance_after
+FROM ledger_entries le
+JOIN transactions t ON t.transaction_id = le.transaction_id
+WHERE le.account_id = 234324
+  AND (le.created_at, le.entry_id) < ('2026-01-13T04:21:06.437567+01:00', 3753502)
+ORDER BY le.created_at DESC, le.entry_id DESC
+LIMIT 50;
+
+Limit  (cost=0.86..483.66 rows=50 width=67) (actual time=0.009..0.101 rows=50 loops=1)
+  Buffers: shared hit=238
+  ->  Nested Loop  (cost=0.86..107174.46 rows=11099 width=67) (actual time=0.009..0.097 rows=50 loops=1)
+        Buffers: shared hit=238
+        ->  Index Scan Backward using ix_ledger_account_time on ledger_entries le  (cost=0.43..40571.41 rows=11099 width=47) (actual time=0.005..0.025 rows=50 loops=1)
+              Index Cond: ((account_id = 234324) AND (ROW(created_at, entry_id) < ROW('2026-01-13 04:21:06.437567+01'::timestamp with time zone, 3753502)))
+              Buffers: shared hit=38
+        ->  Index Scan using transactions_pkey on transactions t  (cost=0.43..6.00 rows=1 width=36) (actual time=0.001..0.001 rows=1 loops=50)
+              Index Cond: (transaction_id = le.transaction_id)
+              Buffers: shared hit=200
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.109 ms
+Execution Time: 0.114 ms

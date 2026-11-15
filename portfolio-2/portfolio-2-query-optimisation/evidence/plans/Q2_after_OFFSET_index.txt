@@ -1,0 +1,38 @@
+-- Q2 [after] OFFSET + index
+-- result rows: 50; first row: (datetime.datetime(2026, 1, 13, 4, 13, 17, 924728, tzinfo=zoneinfo.ZoneInfo(key='Africa/Lagos')), 'PH-B-00936709', 'WITHDRAWAL', 'DEBIT ', Decimal('15047.06'), Decimal('265776406.25'))
+
+SELECT le.created_at, t.reference, t.transaction_type, le.direction, le.amount, le.balance_after
+FROM ledger_entries le
+JOIN accounts a     ON a.account_id = le.account_id
+JOIN transactions t ON t.transaction_id = le.transaction_id
+WHERE a.account_number = '2000000001'
+ORDER BY le.created_at DESC, le.entry_id DESC
+OFFSET 10000 LIMIT 50;
+
+Limit  (cost=410.25..410.25 rows=1 width=67) (actual time=114.007..114.015 rows=50 loops=1)
+  Buffers: shared hit=73487 read=26829
+  ->  Sort  (cost=410.20..410.25 rows=21 width=67) (actual time=113.294..113.703 rows=10050 loops=1)
+        Sort Key: le.created_at DESC, le.entry_id DESC
+        Sort Method: top-N heapsort  Memory: 3285kB
+        Buffers: shared hit=73487 read=26829
+        ->  Nested Loop  (cost=6.04..409.74 rows=21 width=67) (actual time=3.622..106.129 rows=21463 loops=1)
+              Buffers: shared hit=73487 read=26829
+              ->  Nested Loop  (cost=5.61..398.84 rows=21 width=47) (actual time=3.601..48.690 rows=21463 loops=1)
+                    Buffers: shared hit=2 read=14462
+                    ->  Index Scan using accounts_account_number_key on accounts a  (cost=0.42..8.44 rows=1 width=8) (actual time=0.019..0.022 rows=1 loops=1)
+                          Index Cond: (account_number = '2000000001'::bpchar)
+                          Buffers: shared hit=1 read=3
+                    ->  Bitmap Heap Scan on ledger_entries le  (cost=5.20..389.41 rows=99 width=55) (actual time=3.576..46.294 rows=21463 loops=1)
+                          Recheck Cond: (account_id = a.account_id)
+                          Heap Blocks: exact=14304
+                          Buffers: shared hit=1 read=14459
+                          ->  Bitmap Index Scan on ix_ledger_account_time  (cost=0.00..5.17 rows=99 width=0) (actual time=1.784..1.784 rows=21463 loops=1)
+                                Index Cond: (account_id = a.account_id)
+                                Buffers: shared hit=1 read=155
+              ->  Index Scan using transactions_pkey on transactions t  (cost=0.43..0.52 rows=1 width=36) (actual time=0.002..0.002 rows=1 loops=21463)
+                    Index Cond: (transaction_id = le.transaction_id)
+                    Buffers: shared hit=73485 read=12367
+Planning:
+  Buffers: shared hit=7 read=21
+Planning Time: 0.410 ms
+Execution Time: 114.058 ms

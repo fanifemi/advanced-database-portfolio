@@ -1,0 +1,9 @@
+Index sizes after optimisation (tmp_btree_txn_created = B-tree equivalent of the BRIN, built only for comparison)
+
+ix_ledger_account_time           134 MB
+transactions_pkey                46 MB
+ix_ledger_txn                    43 MB
+tmp_btree_txn_created            22 MB
+ix_customers_phone_trgm          2784 kB
+ix_txn_open_items                144 kB
+brin_txn_created                 40 kB

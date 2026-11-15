@@ -1,0 +1,13 @@
+-- Q4 [before] email = '...' (not sargable for lower() index)
+-- result rows: 0; first row: None
+
+SELECT customer_id, first_name, last_name, phone, kyc_tier
+FROM customers
+WHERE email = 'Obinna.Adeyemi1234@mail.example';
+
+Seq Scan on customers  (cost=0.00..3126.07 rows=1 width=38) (actual time=4.387..4.387 rows=0 loops=1)
+  Filter: ((email)::text = 'Obinna.Adeyemi1234@mail.example'::text)
+  Rows Removed by Filter: 100006
+  Buffers: shared hit=1876
+Planning Time: 0.025 ms
+Execution Time: 4.393 ms

@@ -1,0 +1,12 @@
+-- Q4 [after] lower(email) = lower('...') (uses functional index)
+-- result rows: 1; first row: (228869, 'Obinna', 'Adeyemi', '+2348100001234', 3)
+
+SELECT customer_id, first_name, last_name, phone, kyc_tier
+FROM customers
+WHERE lower(email) = lower('Obinna.Adeyemi1234@mail.example');
+
+Index Scan using uq_customer_email_ci on customers  (cost=0.42..8.44 rows=1 width=38) (actual time=0.004..0.005 rows=1 loops=1)
+  Index Cond: (lower((email)::text) = 'obinna.adeyemi1234@mail.example'::text)
+  Buffers: shared hit=4
+Planning Time: 0.020 ms
+Execution Time: 0.008 ms

@@ -1,0 +1,71 @@
+SET
+ setseed 
+---------
+ 
+(1 row)
+
+psql:portfolio-2-query-optimisation/sql/01_generate_bulk_data.sql:21: NOTICE:  index "ix_accounts_customer" does not exist, skipping
+psql:portfolio-2-query-optimisation/sql/01_generate_bulk_data.sql:21: NOTICE:  index "ix_txn_initiated_by" does not exist, skipping
+psql:portfolio-2-query-optimisation/sql/01_generate_bulk_data.sql:21: NOTICE:  index "ix_ledger_txn" does not exist, skipping
+psql:portfolio-2-query-optimisation/sql/01_generate_bulk_data.sql:21: NOTICE:  index "ix_ledger_account" does not exist, skipping
+DROP INDEX
+BEGIN
+SET
+SET
+CREATE TABLE
+INSERT 0 36
+CREATE TABLE
+INSERT 0 30
+INSERT 0 100000
+SELECT 100000
+CREATE INDEX
+ANALYZE
+INSERT 0 100000
+INSERT 0 15000
+SELECT 98970
+CREATE INDEX
+ANALYZE
+SELECT 1
+INSERT 0 100000
+SELECT 1000000
+ANALYZE
+UPDATE 1
+ALTER TABLE
+UPDATE 269477
+UPDATE 5468
+UPDATE 300
+SELECT 1
+CREATE TABLE
+INSERT 0 2252387
+ANALYZE
+SELECT 72697
+INSERT 0 72697
+INSERT 0 145394
+INSERT 0 1072697
+SELECT 1072697
+CREATE INDEX
+ANALYZE
+ANALYZE
+ANALYZE
+INSERT 0 2397781
+INSERT 0 269477
+UPDATE 98949
+COMMIT
+--- Integrity checks (all "violations" columns must be 0) ---
+ unbalanced_txn_violations | reconciliation_violations | negative_running_balance_violations | max_balance_violations 
+---------------------------+---------------------------+-------------------------------------+------------------------
+                         0 |                         0 |                                   0 |                      0
+(1 row)
+
+--- Volumes ---
+     table_name     |  count  
+--------------------+---------
+ beneficiaries      |  100003
+ customers          |  100006
+ accounts           |  115010
+ ledger_entries     | 2397806
+ transactions       | 1072709
+ external_transfers |  269480
+(6 rows)
+
+VACUUM
