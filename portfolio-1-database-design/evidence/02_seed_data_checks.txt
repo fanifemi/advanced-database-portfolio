@@ -1,0 +1,54 @@
+--- Row counts per table ---
+       t        | count 
+----------------+-------
+ customers      |     6
+ accounts       |    10
+ transactions   |    12
+ ledger_entries |    25
+ kyc_documents  |     9
+ audit_log      |    43
+(6 rows)
+
+--- Balance reconciliation (stored vs ledger) ---
+ account_id | account_number | account_category | stored_balance | ledger_balance | difference 
+------------+----------------+------------------+----------------+----------------+------------
+          1 | 9000000001     | SYSTEM           |      130000.00 |      130000.00 |       0.00
+          2 | 9000000002     | SYSTEM           |          53.75 |          53.75 |       0.00
+          3 | 9000000003     | SYSTEM           |    -3870000.00 |    -3870000.00 |       0.00
+          4 | 1000000011     | CUSTOMER         |     1155000.00 |     1155000.00 |       0.00
+          5 | 1000000012     | CUSTOMER         |      300000.00 |      300000.00 |       0.00
+          6 | 1000000021     | CUSTOMER         |      295000.00 |      295000.00 |       0.00
+          7 | 1000000031     | CUSTOMER         |       30000.00 |       30000.00 |       0.00
+          8 | 1000000041     | CUSTOMER         |     1879946.25 |     1879946.25 |       0.00
+          9 | 1000000051     | CUSTOMER         |           0.00 |              0 |       0.00
+         10 | 1000000061     | CUSTOMER         |       80000.00 |       80000.00 |       0.00
+(10 rows)
+
+--- Ledger trial balance: total debits must equal total credits ---
+   debits   |  credits   
+------------+------------
+ 4465161.25 | 4465161.25
+(1 row)
+
+--- Customer accounts view ---
+ customer_id | customer_name | kyc_tier | customer_status | account_number |     product_name     | currency |  balance   | account_status | daily_debit_limit 
+-------------+---------------+----------+-----------------+----------------+----------------------+----------+------------+----------------+-------------------
+           1 | Adaeze Okafor |        3 | ACTIVE          | 1000000012     | Target Savings Vault | NGN      |  300000.00 | ACTIVE         |         100000.00
+           1 | Adaeze Okafor |        3 | ACTIVE          | 1000000011     | Premium Wallet       | NGN      | 1155000.00 | ACTIVE         |        5000000.00
+           2 | Tunde Bakare  |        2 | ACTIVE          | 1000000021     | Standard Wallet      | NGN      |  295000.00 | ACTIVE         |         200000.00
+           3 | Fatima Bello  |        1 | ACTIVE          | 1000000031     | Starter Wallet       | NGN      |   30000.00 | ACTIVE         |          50000.00
+           4 | Chinedu Eze   |        3 | ACTIVE          | 1000000041     | Premium Wallet       | NGN      | 1879946.25 | ACTIVE         |        5000000.00
+           5 | Ngozi Adeyemi |        1 | PENDING         | 1000000051     | Starter Wallet       | NGN      |       0.00 | ACTIVE         |          50000.00
+           6 | Ibrahim Musa  |        2 | SUSPENDED       | 1000000061     | Standard Wallet      | NGN      |   80000.00 | FROZEN         |         200000.00
+(7 rows)
+
+--- Statement for 1000000011 (shows reversal) ---
+ account_number |  reference  | transaction_type  |   status   | direction |   amount   | balance_after |                     narration                      |       created_at       
+----------------+-------------+-------------------+------------+-----------+------------+---------------+----------------------------------------------------+------------------------
+ 1000000011     | PH-DEP-0001 | DEPOSIT           | SUCCESSFUL | CREDIT    | 1500000.00 |    1500000.00 | Wallet funding via card                            | 2026-01-05 10:15:00+01
+ 1000000011     | PH-INT-0001 | INTERNAL_TRANSFER | SUCCESSFUL | DEBIT     |  300000.00 |    1200000.00 | Move to savings vault                              | 2026-03-01 07:45:00+01
+ 1000000011     | PH-INT-0002 | INTERNAL_TRANSFER | SUCCESSFUL | DEBIT     |   45000.00 |    1155000.00 | Rent contribution                                  | 2026-03-02 18:20:00+01
+ 1000000011     | PH-EXT-0003 | EXTERNAL_TRANSFER | REVERSED   | DEBIT     |   60053.75 |    1094946.25 | School fees support                                | 2026-03-08 15:00:00+01
+ 1000000011     | PH-REV-0001 | REVERSAL          | SUCCESSFUL | CREDIT    |   60053.75 |    1155000.00 | Reversal of PH-EXT-0003 (beneficiary bank timeout) | 2026-03-08 15:20:00+01
+(5 rows)
+

@@ -1,0 +1,345 @@
+# Generated 2026-11-14 19:22Z on PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+>> sql/01_schema.sql
+psql:sql/01_schema.sql:8: NOTICE:  drop cascades to 22 other objects
+DETAIL:  drop cascades to table payhaven.banks
+drop cascades to table payhaven.account_products
+drop cascades to table payhaven.staff
+drop cascades to table payhaven.customers
+drop cascades to table payhaven.customer_addresses
+drop cascades to table payhaven.kyc_documents
+drop cascades to table payhaven.accounts
+drop cascades to table payhaven.beneficiaries
+drop cascades to table payhaven.transactions
+drop cascades to table payhaven.ledger_entries
+drop cascades to table payhaven.external_transfers
+drop cascades to table payhaven.audit_log
+drop cascades to function payhaven.trg_set_updated_at()
+drop cascades to function payhaven.trg_account_product_rules()
+drop cascades to function payhaven.trg_ledger_entry_rules()
+drop cascades to function payhaven.trg_check_transaction_balanced()
+drop cascades to function payhaven.trg_ledger_immutable()
+drop cascades to function payhaven.trg_reversal_rules()
+drop cascades to function payhaven.trg_audit()
+drop cascades to view payhaven.v_balance_reconciliation
+drop cascades to view payhaven.v_customer_accounts
+drop cascades to view payhaven.v_account_statement
+>> sql/02_functions_triggers.sql
+>> sql/03_views.sql
+>> sql/04_seed.sql
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+ leg 
+-----
+ 
+(1 row)
+
+>> tests/constraint_tests.sql
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_ok 
+-----------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_error 
+--------------
+ 
+(1 row)
+
+ expect_ok 
+-----------
+ 
+(1 row)
+
+ expect_ok 
+-----------
+ 
+(1 row)
+
+
+==================== CONSTRAINT TEST RESULTS ====================
+ #  | result |                          test_name                           |                                 error raised                                 
+----+--------+--------------------------------------------------------------+------------------------------------------------------------------------------
+  1 | PASS   | Duplicate BVN rejected                                       | 23505 duplicate key value violates unique constraint "customers_bvn_key"
+  2 | PASS   | Duplicate email rejected (case-insensitive)                  | 23505 duplicate key value violates unique constraint "uq_customer_email_ci"
+  3 | PASS   | Duplicate account number rejected                            | 23505 duplicate key value violates unique constraint "accounts_account_numbe
+  4 | PASS   | Duplicate transaction reference rejected (idempotency)       | 23505 duplicate key value violates unique constraint "transactions_reference
+  5 | PASS   | Same KYC document cannot be used twice                       | 23505 duplicate key value violates unique constraint "uq_kyc_document"
+  6 | PASS   | A transaction can only be reversed once (UNIQUE reversal_of) | 23505 duplicate key value violates unique constraint "transactions_reversal_
+  7 | PASS   | Account for non-existent customer rejected                   | 23503 insert or update on table "accounts" violates foreign key constraint "
+  8 | PASS   | Beneficiary at unknown bank rejected                         | 23503 insert or update on table "beneficiaries" violates foreign key constra
+  9 | PASS   | Cannot delete a customer who still has accounts (RESTRICT)   | 23503 update or delete on table "customers" violates foreign key constraint 
+ 10 | PASS   | BVN must be 11 digits                                        | 23514 new row for relation "customers" violates check constraint "chk_custom
+ 11 | PASS   | Phone must be +234 format                                    | 23514 new row for relation "customers" violates check constraint "chk_custom
+ 12 | PASS   | Under-18 customer rejected                                   | 23514 new row for relation "customers" violates check constraint "chk_custom
+ 13 | PASS   | Customer wallet cannot go negative (no overdraft)            | 23514 new row for relation "accounts" violates check constraint "chk_acct_no
+ 14 | PASS   | SYSTEM account cannot have an owner                          | 23514 new row for relation "accounts" violates check constraint "chk_acct_ow
+ 15 | PASS   | Transaction amount must be positive                          | 23514 new row for relation "transactions" violates check constraint "chk_txn
+ 16 | PASS   | Non-reversal cannot reference another transaction            | 23514 new row for relation "transactions" violates check constraint "chk_txn
+ 17 | PASS   | Verified KYC document must name a reviewer                   | 23514 new row for relation "kyc_documents" violates check constraint "chk_ky
+ 18 | PASS   | Closed account must have closed_at                           | 23514 new row for relation "accounts" violates check constraint "chk_acct_cl
+ 19 | PASS   | R2: Tier-1 customer cannot open a Tier-3 product             | 23514 Customer 3 is KYC tier 1, product PH_TIER3 needs tier 3
+ 20 | PASS   | R2: Tier-1 wallet cannot exceed N300,000 balance             | 23514 Balance 300000.01 exceeds product PH_TIER1 maximum of 300000.00
+ 21 | PASS   | R3: Cannot post to a FROZEN account                          | 23514 Account 10 is FROZEN and cannot be posted to
+ 22 | PASS   | R3: USD transaction cannot post to NGN account               | 23514 Currency mismatch: account 4 is NGN, transaction 19 is USD
+ 23 | PASS   | R4: Unbalanced transaction (debit 1000, credit 900) rejected | 23514 Transaction 20 is unbalanced: debits 1000.00, credits 900.00, lines 2
+ 24 | PASS   | R4: Balanced transaction (debit 1000, credit 1000) accepted  | success
+ 25 | PASS   | R5: Ledger lines cannot be edited                            | 42501 ledger_entries is append-only (UPDATE not allowed); post a REVERSAL in
+ 26 | PASS   | R5: Ledger lines cannot be deleted                           | 42501 ledger_entries is append-only (DELETE not allowed); post a REVERSAL in
+ 27 | PASS   | R6: FAILED transaction cannot be reversed                    | 23514 Only SUCCESSFUL transactions can be reversed; 9 is FAILED
+ 28 | PASS   | R6: Reversal must refund amount + fee exactly                | 23514 Reversal must return amount + fee (120053.75 NGN)
+ 29 | PASS   | Valid new Tier-2 customer and wallet accepted                | success
+ 30 | PASS   | R7: Audit trigger records account updates                    | success
+(30 rows)
+
+ passed | failed | total 
+--------+--------+-------
+     30 |      0 |    30
+(1 row)
+

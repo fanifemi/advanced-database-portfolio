@@ -1,0 +1,100 @@
+--- All constraints (from pg_constraint) ---
+         table_name          |            constraint_name             |    type     |                                                                                                                                  definition                                                                                                                                  
+-----------------------------+----------------------------------------+-------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ payhaven.accounts           | chk_acct_category                      | CHECK       | CHECK (((account_category)::text = ANY ((ARRAY['CUSTOMER'::character varying, 'SYSTEM'::character varying])::text[])))
+ payhaven.accounts           | chk_acct_close_time                    | CHECK       | CHECK (((closed_at IS NULL) OR (closed_at >= opened_at)))
+ payhaven.accounts           | chk_acct_closed                        | CHECK       | CHECK ((((status)::text = 'CLOSED'::text) = (closed_at IS NOT NULL)))
+ payhaven.accounts           | chk_acct_currency                      | CHECK       | CHECK ((currency = ANY (ARRAY['NGN'::bpchar, 'USD'::bpchar])))
+ payhaven.accounts           | chk_acct_no_overdraft                  | CHECK       | CHECK ((((account_category)::text = 'SYSTEM'::text) OR (balance >= (0)::numeric)))
+ payhaven.accounts           | chk_acct_number                        | CHECK       | CHECK ((account_number ~ '^[0-9]{10}$'::text))
+ payhaven.accounts           | chk_acct_ownership                     | CHECK       | CHECK (((((account_category)::text = 'CUSTOMER'::text) AND (customer_id IS NOT NULL) AND (product_code IS NOT NULL)) OR (((account_category)::text = 'SYSTEM'::text) AND (customer_id IS NULL))))
+ payhaven.accounts           | chk_acct_status                        | CHECK       | CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'FROZEN'::character varying, 'DORMANT'::character varying, 'CLOSED'::character varying])::text[])))
+ payhaven.customer_addresses | chk_address_type                       | CHECK       | CHECK (((address_type)::text = ANY ((ARRAY['RESIDENTIAL'::character varying, 'MAILING'::character varying, 'WORK'::character varying])::text[])))
+ payhaven.audit_log          | chk_audit_action                       | CHECK       | CHECK ((action = ANY (ARRAY['INSERT'::bpchar, 'UPDATE'::bpchar, 'DELETE'::bpchar])))
+ payhaven.banks              | chk_bank_code_digits                   | CHECK       | CHECK (((bank_code)::text ~ '^[0-9]{3,6}$'::text))
+ payhaven.beneficiaries      | chk_benef_acct_number                  | CHECK       | CHECK ((account_number ~ '^[0-9]{10}$'::text))
+ payhaven.customers          | chk_customer_adult                     | CHECK       | CHECK ((date_of_birth <= ((created_at)::date - '18 years'::interval)))
+ payhaven.customers          | chk_customer_bvn                       | CHECK       | CHECK ((bvn ~ '^[0-9]{11}$'::text))
+ payhaven.customers          | chk_customer_email                     | CHECK       | CHECK (((email)::text ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'::text))
+ payhaven.customers          | chk_customer_phone                     | CHECK       | CHECK (((phone)::text ~ '^\+234[0-9]{10}$'::text))
+ payhaven.customers          | chk_customer_status                    | CHECK       | CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'ACTIVE'::character varying, 'SUSPENDED'::character varying, 'CLOSED'::character varying])::text[])))
+ payhaven.customers          | chk_customer_tier                      | CHECK       | CHECK (((kyc_tier >= 1) AND (kyc_tier <= 3)))
+ payhaven.ledger_entries     | chk_entry_amount                       | CHECK       | CHECK ((amount > (0)::numeric))
+ payhaven.ledger_entries     | chk_entry_direction                    | CHECK       | CHECK ((direction = ANY (ARRAY['DEBIT'::bpchar, 'CREDIT'::bpchar])))
+ payhaven.kyc_documents      | chk_kyc_doc_type                       | CHECK       | CHECK (((document_type)::text = ANY ((ARRAY['NIN'::character varying, 'PASSPORT'::character varying, 'DRIVERS_LICENCE'::character varying, 'VOTERS_CARD'::character varying, 'UTILITY_BILL'::character varying])::text[])))
+ payhaven.kyc_documents      | chk_kyc_rejection                      | CHECK       | CHECK ((((status)::text <> 'REJECTED'::text) OR (rejection_reason IS NOT NULL)))
+ payhaven.kyc_documents      | chk_kyc_review_time                    | CHECK       | CHECK (((reviewed_at IS NULL) OR (reviewed_at >= submitted_at)))
+ payhaven.kyc_documents      | chk_kyc_reviewed                       | CHECK       | CHECK (((((status)::text = 'SUBMITTED'::text) AND (reviewed_by IS NULL) AND (reviewed_at IS NULL)) OR (((status)::text = ANY ((ARRAY['VERIFIED'::character varying, 'REJECTED'::character varying])::text[])) AND (reviewed_by IS NOT NULL) AND (reviewed_at IS NOT NULL))))
+ payhaven.kyc_documents      | chk_kyc_status                         | CHECK       | CHECK (((status)::text = ANY ((ARRAY['SUBMITTED'::character varying, 'VERIFIED'::character varying, 'REJECTED'::character varying])::text[])))
+ payhaven.external_transfers | chk_nip_response                       | CHECK       | CHECK (((response_code IS NULL) OR (response_code ~ '^[0-9]{2}$'::text)))
+ payhaven.account_products   | chk_product_interest                   | CHECK       | CHECK (((interest_rate_pa >= (0)::numeric) AND (interest_rate_pa <= (100)::numeric)))
+ payhaven.account_products   | chk_product_limit                      | CHECK       | CHECK ((daily_debit_limit > (0)::numeric))
+ payhaven.account_products   | chk_product_max_bal                    | CHECK       | CHECK (((max_balance IS NULL) OR (max_balance > (0)::numeric)))
+ payhaven.account_products   | chk_product_tier                       | CHECK       | CHECK (((min_kyc_tier >= 1) AND (min_kyc_tier <= 3)))
+ payhaven.staff              | chk_staff_number                       | CHECK       | CHECK (((staff_number)::text ~ '^PH-[0-9]{4}$'::text))
+ payhaven.staff              | chk_staff_role                         | CHECK       | CHECK (((role)::text = ANY ((ARRAY['KYC_OFFICER'::character varying, 'SUPPORT'::character varying, 'COMPLIANCE'::character varying, 'ADMIN'::character varying])::text[])))
+ payhaven.transactions       | chk_txn_amount                         | CHECK       | CHECK ((amount > (0)::numeric))
+ payhaven.transactions       | chk_txn_channel                        | CHECK       | CHECK (((channel)::text = ANY ((ARRAY['MOBILE'::character varying, 'WEB'::character varying, 'USSD'::character varying, 'API'::character varying, 'SYSTEM'::character varying])::text[])))
+ payhaven.transactions       | chk_txn_completed                      | CHECK       | CHECK ((((status)::text = 'PENDING'::text) = (completed_at IS NULL)))
+ payhaven.transactions       | chk_txn_currency                       | CHECK       | CHECK ((currency = ANY (ARRAY['NGN'::bpchar, 'USD'::bpchar])))
+ payhaven.transactions       | chk_txn_fee                            | CHECK       | CHECK ((fee >= (0)::numeric))
+ payhaven.transactions       | chk_txn_no_self_reversal               | CHECK       | CHECK (((reversal_of IS NULL) OR (reversal_of <> transaction_id)))
+ payhaven.transactions       | chk_txn_reversal                       | CHECK       | CHECK ((((transaction_type)::text = 'REVERSAL'::text) = (reversal_of IS NOT NULL)))
+ payhaven.transactions       | chk_txn_status                         | CHECK       | CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'SUCCESSFUL'::character varying, 'FAILED'::character varying, 'REVERSED'::character varying])::text[])))
+ payhaven.transactions       | chk_txn_time                           | CHECK       | CHECK (((completed_at IS NULL) OR (completed_at >= created_at)))
+ payhaven.transactions       | chk_txn_type                           | CHECK       | CHECK (((transaction_type)::text = ANY ((ARRAY['DEPOSIT'::character varying, 'WITHDRAWAL'::character varying, 'INTERNAL_TRANSFER'::character varying, 'EXTERNAL_TRANSFER'::character varying, 'REVERSAL'::character varying])::text[])))
+ payhaven.accounts           | accounts_customer_id_fkey              | FOREIGN KEY | FOREIGN KEY (customer_id) REFERENCES payhaven.customers(customer_id) ON DELETE RESTRICT
+ payhaven.accounts           | accounts_product_code_fkey             | FOREIGN KEY | FOREIGN KEY (product_code) REFERENCES payhaven.account_products(product_code) ON UPDATE CASCADE
+ payhaven.beneficiaries      | beneficiaries_bank_code_fkey           | FOREIGN KEY | FOREIGN KEY (bank_code) REFERENCES payhaven.banks(bank_code)
+ payhaven.beneficiaries      | beneficiaries_customer_id_fkey         | FOREIGN KEY | FOREIGN KEY (customer_id) REFERENCES payhaven.customers(customer_id) ON DELETE CASCADE
+ payhaven.customer_addresses | customer_addresses_customer_id_fkey    | FOREIGN KEY | FOREIGN KEY (customer_id) REFERENCES payhaven.customers(customer_id) ON DELETE CASCADE
+ payhaven.external_transfers | external_transfers_beneficiary_id_fkey | FOREIGN KEY | FOREIGN KEY (beneficiary_id) REFERENCES payhaven.beneficiaries(beneficiary_id) ON DELETE RESTRICT
+ payhaven.external_transfers | external_transfers_transaction_id_fkey | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES payhaven.transactions(transaction_id) ON DELETE CASCADE
+ payhaven.kyc_documents      | kyc_documents_customer_id_fkey         | FOREIGN KEY | FOREIGN KEY (customer_id) REFERENCES payhaven.customers(customer_id) ON DELETE CASCADE
+ payhaven.kyc_documents      | kyc_documents_reviewed_by_fkey         | FOREIGN KEY | FOREIGN KEY (reviewed_by) REFERENCES payhaven.staff(staff_id) ON DELETE RESTRICT
+ payhaven.ledger_entries     | ledger_entries_account_id_fkey         | FOREIGN KEY | FOREIGN KEY (account_id) REFERENCES payhaven.accounts(account_id) ON DELETE RESTRICT
+ payhaven.ledger_entries     | ledger_entries_transaction_id_fkey     | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES payhaven.transactions(transaction_id) ON DELETE RESTRICT
+ payhaven.transactions       | transactions_initiated_by_fkey         | FOREIGN KEY | FOREIGN KEY (initiated_by) REFERENCES payhaven.customers(customer_id) ON DELETE RESTRICT
+ payhaven.transactions       | transactions_reversal_of_fkey          | FOREIGN KEY | FOREIGN KEY (reversal_of) REFERENCES payhaven.transactions(transaction_id)
+ payhaven.account_products   | account_products_pkey                  | PRIMARY KEY | PRIMARY KEY (product_code)
+ payhaven.accounts           | accounts_pkey                          | PRIMARY KEY | PRIMARY KEY (account_id)
+ payhaven.audit_log          | audit_log_pkey                         | PRIMARY KEY | PRIMARY KEY (audit_id)
+ payhaven.banks              | banks_pkey                             | PRIMARY KEY | PRIMARY KEY (bank_code)
+ payhaven.beneficiaries      | beneficiaries_pkey                     | PRIMARY KEY | PRIMARY KEY (beneficiary_id)
+ payhaven.customer_addresses | customer_addresses_pkey                | PRIMARY KEY | PRIMARY KEY (address_id)
+ payhaven.customers          | customers_pkey                         | PRIMARY KEY | PRIMARY KEY (customer_id)
+ payhaven.external_transfers | external_transfers_pkey                | PRIMARY KEY | PRIMARY KEY (transaction_id)
+ payhaven.kyc_documents      | kyc_documents_pkey                     | PRIMARY KEY | PRIMARY KEY (document_id)
+ payhaven.ledger_entries     | ledger_entries_pkey                    | PRIMARY KEY | PRIMARY KEY (entry_id)
+ payhaven.staff              | staff_pkey                             | PRIMARY KEY | PRIMARY KEY (staff_id)
+ payhaven.transactions       | transactions_pkey                      | PRIMARY KEY | PRIMARY KEY (transaction_id)
+ payhaven.account_products   | account_products_product_name_key      | UNIQUE      | UNIQUE (product_name)
+ payhaven.accounts           | accounts_account_number_key            | UNIQUE      | UNIQUE (account_number)
+ payhaven.banks              | banks_bank_name_key                    | UNIQUE      | UNIQUE (bank_name)
+ payhaven.customers          | customers_bvn_key                      | UNIQUE      | UNIQUE (bvn)
+ payhaven.customers          | customers_phone_key                    | UNIQUE      | UNIQUE (phone)
+ payhaven.external_transfers | external_transfers_nip_session_id_key  | UNIQUE      | UNIQUE (nip_session_id)
+ payhaven.staff              | staff_staff_number_key                 | UNIQUE      | UNIQUE (staff_number)
+ payhaven.transactions       | transactions_reference_key             | UNIQUE      | UNIQUE (reference)
+ payhaven.transactions       | transactions_reversal_of_key           | UNIQUE      | UNIQUE (reversal_of)
+ payhaven.beneficiaries      | uq_beneficiary                         | UNIQUE      | UNIQUE (customer_id, bank_code, account_number)
+ payhaven.customer_addresses | uq_customer_address_type               | UNIQUE      | UNIQUE (customer_id, address_type)
+ payhaven.kyc_documents      | uq_kyc_document                        | UNIQUE      | UNIQUE (document_type, document_number)
+ payhaven.ledger_entries     | ledger_must_balance                    |             | TRIGGER DEFERRABLE INITIALLY DEFERRED
+(80 rows)
+
+--- Triggers ---
+   table_name   |        trigger_name         | action_timing |        events        
+----------------+-----------------------------+---------------+----------------------
+ accounts       | accounts_audit              | AFTER         | UPDATE/INSERT/DELETE
+ accounts       | accounts_product_rules      | BEFORE        | INSERT/UPDATE
+ accounts       | accounts_updated_at         | BEFORE        | UPDATE
+ customers      | customers_audit             | AFTER         | INSERT/DELETE/UPDATE
+ customers      | customers_updated_at        | BEFORE        | UPDATE
+ ledger_entries | ledger_entry_rules          | BEFORE        | INSERT
+ ledger_entries | ledger_must_balance         | AFTER         | INSERT
+ ledger_entries | ledger_no_update            | BEFORE        | DELETE/UPDATE
+ transactions   | transactions_audit          | AFTER         | UPDATE/DELETE
+ transactions   | transactions_reversal_rules | BEFORE        | INSERT
+(10 rows)
+
