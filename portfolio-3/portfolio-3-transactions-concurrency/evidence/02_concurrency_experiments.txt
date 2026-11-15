@@ -1,0 +1,66 @@
+PayHaven concurrency experiments — PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1), default isolation read committed, deadlock_timeout 1s
+
+====================================================================================================
+E1  LOST UPDATE — 16 threads, 200 cash-outs of N1,000 from a N150,000 wallet (correct outcome: 150 succeed, 50 rejected, final balance N0)
+====================================================================================================
+variant                                        ok  rej  retry gave up wallet stored wallet ledger agent stored agent ledger  overpaid   tps  verdict
+1 naive read-modify-write (READ COMMITTED)    200    0      0       0       137,000       -50,000       13,000      200,000    50,000   438  CORRUPTED
+2 pessimistic: SELECT ... FOR UPDATE          150   50      0       0             0             0      150,000      150,000         0   286  CORRECT
+3 atomic conditional UPDATE                   150   50      0       0             0             0      150,000      150,000         0   571  CORRECT
+4 optimistic: version column + retry          150   45   2173       5             0             0      150,000      150,000         0   188  CORRECT
+5 naive code under SERIALIZABLE + retry       150   44   2202       6             0             0      150,000      150,000         0   174  CORRECT
+6 production transfer() function              150   50      0       0             0             0      150,000      150,000         0   563  CORRECT
+
+stored = accounts.balance; ledger = sum of ledger lines. They must be equal. 'overpaid' = cash handed out beyond the N150,000 that existed. 'gave up' = request abandoned after 100 retries.
+
+====================================================================================================
+E2  DEADLOCK — 8 threads, 40 transfers of N100 between accounts X and Y in BOTH directions
+====================================================================================================
+variant                                        completed  deadlocks detected  elapsed s  balances consistent
+naive: lock source first, then destination            40                 295     111.67  True
+transfer(): lock both in account_id order             40                   0       0.11  True
+
+Each deadlock costs ~deadlock_timeout (1 s) before PostgreSQL detects the cycle and aborts one victim (SQLSTATE 40P01).
+
+====================================================================================================
+E3  ISOLATION ANOMALIES — two sessions, scripted interleaving
+====================================================================================================
+a. Dirty read            READ UNCOMMITTED   T2 saw 50,000.00 while T1 had an uncommitted +999,999                            PREVENTED (PostgreSQL treats READ UNCOMMITTED as READ COMMITTED)
+b. Non-repeatable read   READ_COMMITTED     T1 read 50,000.00, T2 committed a N5,000 deposit, T1 re-read 55,000.00           OCCURRED
+b. Non-repeatable read   REPEATABLE_READ    T1 read 55,000.00, T2 committed a N5,000 deposit, T1 re-read 55,000.00           PREVENTED (snapshot)
+c. Phantom read          READ_COMMITTED     T1 counted 3 ledger lines today, T2 inserted one, T1 recounted 4                 OCCURRED
+c. Phantom read          REPEATABLE_READ    T1 counted 4 ledger lines today, T2 inserted one, T1 recounted 4                 PREVENTED (snapshot)
+
+d. WRITE SKEW — rule: a Tier-2 customer's COMBINED debits today across all accounts must not exceed N200,000.
+   Wallet sends N150,000 and savings vault sends N90,000 at the same moment (combined N240,000).
+   Each session checks the combined total, sees room, then debits a DIFFERENT row — no row is written by both.
+
+   REPEATABLE READ                      | S1 saw N0 -> debited N150,000 COMMITTED | S2 saw N0 -> debited N90,000 COMMITTED | combined debited N240,000 -> RULE VIOLATED (write skew)
+   SERIALIZABLE                         | S1 saw N0 -> debited N150,000 COMMITTED | S2 ABORTED by database: 40001 could not serialize access due to read/write dependencies am | combined debited N150,000 -> rule held
+   READ COMMITTED + lock customer row   | S1 saw N0 -> debited N150,000 COMMITTED | S2 saw N150,000 already debited -> REJECTED by check | combined debited N150,000 -> rule held
+
+====================================================================================================
+E4  IDEMPOTENCY — 20 threads submit the SAME transfer (same reference) at the same instant
+====================================================================================================
+requests: 20 · distinct transaction ids returned: 1 · errors: 0 
+debit lines for the reference: 1 · source balance: 75,000.00 (expected 75,000.00) · destination: 25,000.00 (expected 25,000.00)
+VERDICT: CORRECT — money moved exactly once
+
+====================================================================================================
+E5  DAILY-LIMIT RACE — 10 concurrent N30,000 transfers from a Tier-2 wallet (limit N200,000/day)
+====================================================================================================
+Correct outcome: 6 succeed (N180,000), 4 rejected — the 7th would make N210,000.
+
+naive: check today's total, then debit     succeeded 10 · rejected  0 · debited today N300,000 -> LIMIT BREACHED
+transfer(): lock account, then check       succeeded  6 · rejected  4 · debited today N180,000 -> limit respected
+
+====================================================================================================
+E6  HOT-SPOT CONTENTION — 8 threads x 40 transfers
+====================================================================================================
+internal transfers (each thread uses its own accounts)                    1267 tx/s   p50    4.9 ms   p95    9.9 ms
+NIP transfers (all threads lock the SAME settlement + fee GL rows)         569 tx/s   p50    8.8 ms   p95   37.6 ms
+
+====================================================================================================
+FINAL CHECK — every lab account reconciles (stored balance = ledger balance)
+====================================================================================================
+lab accounts out of balance: 0

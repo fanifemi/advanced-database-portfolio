@@ -1,0 +1,148 @@
+SET
+
+Accounts for this demo: 4000000001 (opened with N100,000) and 4000000002 (empty)
+CREATE VIEW
+
+===== A. COMMIT: transfer N30,000 from 4000000001 to 4000000002 =====
+BEGIN
+ transfer 
+----------
+  2145408
+
+COMMIT
+ account_number | balance  | version 
+----------------+----------+---------
+ 4000000001     | 70000.00 |       2
+ 4000000002     | 30000.00 |       1
+
+     reference     |   status   | direction |  amount  | balance_after 
+-------------------+------------+-----------+----------+---------------
+ DEMO-A-4000000001 | SUCCESSFUL | DEBIT     | 30000.00 |      70000.00
+ DEMO-A-4000000001 | SUCCESSFUL | CREDIT    | 30000.00 |      30000.00
+
+
+===== B. Automatic ROLLBACK: N500,000 transfer fails (insufficient funds) =====
+The transaction header row is inserted BEFORE the balance check fails.
+Afterwards it must not exist, and no balance may have changed.
+BEGIN
+psql:sql/02_atomicity_demo.sql:39: ERROR:  Insufficient funds on 4000000001: balance 70000.00, needed 500000
+CONTEXT:  PL/pgSQL function _check_debit(bigint,numeric) line 9 at RAISE
+SQL statement "SELECT _check_debit(v_from.account_id, p_amount)"
+PL/pgSQL function transfer(text,character,character,numeric,text,text) line 19 at PERFORM
+ROLLBACK
+ account_number | balance  | version 
+----------------+----------+---------
+ 4000000001     | 70000.00 |       2
+ 4000000002     | 30000.00 |       1
+
+ header_rows_left_behind 
+-------------------------
+                       0
+
+
+===== C. Explicit ROLLBACK: the transfer succeeds, then the app cancels =====
+BEGIN
+ transfer 
+----------
+  2145410
+
+Inside the transaction (uncommitted):
+ account_number | balance  | version 
+----------------+----------+---------
+ 4000000001     | 60000.00 |       3
+ 4000000002     | 40000.00 |       2
+
+ROLLBACK
+After ROLLBACK:
+ account_number | balance  | version 
+----------------+----------+---------
+ 4000000001     | 70000.00 |       2
+ 4000000002     | 30000.00 |       1
+
+
+===== D. SAVEPOINTs: pay 4 staff from 4000000001; staff #3 has a FROZEN account =====
+UPDATE 1
+BEGIN
+SAVEPOINT
+ transfer 
+----------
+  2145411
+
+RELEASE
+SAVEPOINT
+ transfer 
+----------
+  2145412
+
+RELEASE
+SAVEPOINT
+psql:sql/02_atomicity_demo.sql:72: ERROR:  Beneficiary account 4000000005 is not active
+CONTEXT:  PL/pgSQL function transfer(text,character,character,numeric,text,text) line 21 at RAISE
+ROLLBACK
+SAVEPOINT
+ transfer 
+----------
+  2145414
+
+RELEASE
+COMMIT
+Payroll result: 3 paid, 1 skipped, batch committed
+ account_number | status | balance  
+----------------+--------+----------
+ 4000000001     | ACTIVE | 55000.00
+ 4000000003     | ACTIVE |  5000.00
+ 4000000004     | ACTIVE |  5000.00
+ 4000000005     | FROZEN |     0.00
+ 4000000006     | ACTIVE |  5000.00
+
+
+===== E. Idempotent retry, then reversal =====
+The client times out and retries the same request (same reference) twice:
+ txn_id_attempt_1 
+------------------
+          2145415
+
+ txn_id_attempt_2 
+------------------
+          2145415
+
+ txn_id_attempt_3 
+------------------
+          2145415
+
+ debits_for_reference 
+----------------------
+                    1
+
+Reverse it (refund), then try to reverse it a second time:
+ reversal_txn_id 
+-----------------
+         2145418
+
+psql:sql/02_atomicity_demo.sql:93: ERROR:  Only SUCCESSFUL transactions can be reversed; 2145415 is REVERSED
+CONTEXT:  PL/pgSQL function trg_reversal_rules() line 17 at RAISE
+SQL statement "INSERT INTO transactions (reference, transaction_type, status, amount, fee, channel, narration, reversal_of)
+    VALUES (p_original_ref || '-R', 'REVERSAL', 'PENDING', o.amount + o.fee, 0, 'SYSTEM', p_reason, o.transaction_id)
+    RETURNING transaction_id"
+PL/pgSQL function reverse_transaction(text,text) line 8 at SQL statement
+      reference      | transaction_type  |   status   | amount  
+---------------------+-------------------+------------+---------
+ DEMO-E-4000000001   | INTERNAL_TRANSFER | REVERSED   | 2000.00
+ DEMO-E-4000000001-R | REVERSAL          | SUCCESSFUL | 2000.00
+
+ account_number | balance  | version 
+----------------+----------+---------
+ 4000000001     | 55000.00 |       7
+ 4000000002     | 30000.00 |       3
+
+
+===== Integrity after all parts: stored balance = ledger balance =====
+ account_number | stored_balance | ledger_balance | difference 
+----------------+----------------+----------------+------------
+ 4000000001     |       55000.00 |       55000.00 |       0.00
+ 4000000002     |       30000.00 |       30000.00 |       0.00
+ 4000000003     |        5000.00 |        5000.00 |       0.00
+ 4000000004     |        5000.00 |        5000.00 |       0.00
+ 4000000005     |           0.00 |              0 |       0.00
+ 4000000006     |        5000.00 |        5000.00 |       0.00
+
