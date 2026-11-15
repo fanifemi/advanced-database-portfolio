@@ -1,0 +1,113 @@
+
+======================================================================================
+D1  BUILD THE CLUSTER — primary + 2 streaming replicas (physical, WAL-based)
+======================================================================================
+primary :5433  loaded PayHaven schema, seed data and transfer functions
+replica1 :5434  created with pg_basebackup (slot replica1_slot) and started in standby mode
+replica2 :5435  created with pg_basebackup (slot replica2_slot) and started in standby mode
+
+pg_stat_replication on the primary:
+ application_name |   state   | sync_state | sent_lsn  | replay_lsn 
+------------------+-----------+------------+-----------+------------
+ replica1         | streaming | async      | 0/4000000 | 0/4000000
+ replica2         | streaming | async      | 0/4000000 | 0/4000000
+(2 rows)
+
+
+======================================================================================
+D2  READ SCALING — write on the primary, read on the replicas; replicas reject writes
+======================================================================================
+primary   in_recovery=f  balances 4000000001=85000.00  4000000002=15000.00
+replica1  in_recovery=t  balances 4000000001=85000.00  4000000002=15000.00
+replica2  in_recovery=t  balances 4000000001=85000.00  4000000002=15000.00
+
+Attempt a transfer on replica1:
+ERROR:  cannot execute INSERT in a read-only transaction
+
+======================================================================================
+D3  REPLICATION LAG = STALE READS (eventual consistency on asynchronous replicas)
+======================================================================================
+Pause WAL replay on replica1 (simulates a lagging replica), then transfer N25,000 on the primary.
+primary   balance of 4000000001 = 60000.00
+replica1  balance of 4000000001 = 85000.00
+replica2  balance of 4000000001 = 60000.00
+
+Primary's view of the replicas (replay_lsn behind sent_lsn = WAL received but not yet applied):
+ application_name | sent_lsn  | replay_lsn | bytes_behind |   replay_lag    
+------------------+-----------+------------+--------------+-----------------
+ replica1         | 0/40197E8 | 0/4018550  |         4760 | 00:00:00.001717
+ replica2         | 0/40197E8 | 0/40197E8  |            0 | 00:00:00.001821
+(2 rows)
+
+A customer whose app reads from replica1 right after transferring would see their OLD balance.
+Resume replay:
+replica1  balance of 4000000001 = 60000.00  (caught up)
+
+======================================================================================
+D4  CONSISTENCY vs LATENCY — asynchronous vs synchronous commit (pgbench, 1 client, 8 s each)
+======================================================================================
+async   (no synchronous standby)                               latency avg  0.985 ms   tps  1015.0
+sync    on           (replica1 has FLUSHED the WAL)            latency avg  1.672 ms   tps   598.2
+sync    remote_apply (replica1 has APPLIED it: readable)       latency avg  1.654 ms   tps   604.6
+ application_name | sync_state 
+------------------+------------
+ replica1         | sync
+ replica2         | async
+(2 rows)
+
+All nodes share one machine, so the network round-trip is ~0. Across cloud availability zones each
+synchronous commit adds roughly one inter-AZ round trip (~1-2 ms); across regions, tens of ms.
+
+======================================================================================
+D4b AVAILABILITY — the synchronous standby goes down (CAP in practice)
+======================================================================================
+replica1 stopped. Committing a N1,000 transfer on the primary (it must wait for replica1's acknowledgement)...
+After 3 s the session is still waiting:
+ pid  | state  | wait_event_type | wait_event |                     query                     
+------+--------+-----------------+------------+-----------------------------------------------
+ 4681 | active | IPC             | SyncRep    | SELECT payhaven.transfer('D4b-4000000001','40
+(1 row)
+
+Operator cancels the wait:
+   client saw: WARNING:  canceling wait for synchronous replication due to user request
+   client saw: DETAIL:  The transaction has already committed locally, but might not have been replicated to the standby.
+   client saw: 17754
+=> With one synchronous standby, losing that standby blocks every commit: the primary chose CONSISTENCY over AVAILABILITY.
+
+Fix: quorum commit — any 1 of the 2 replicas may acknowledge:
+   transfer committed in 57 ms with replica1 still down (replica2 acknowledged)
+ application_name |   state   | sync_state 
+------------------+-----------+------------
+ replica2         | streaming | quorum
+(1 row)
+
+
+======================================================================================
+D5  FAILOVER — the primary crashes; promote replica2; re-attach the others
+======================================================================================
+transactions on primary before crash: 17756
+primary killed (immediate stop) at t=0
+replica2 promoted after 217 ms; first successful transfer on the new primary at 234 ms
+replica2 in_recovery=f  transactions=17757  (before crash: 17756, +1 new)
+RPO here = 0 transactions lost (every pre-crash commit had already streamed). With asynchronous
+replication a crash CAN lose the last few commits; with synchronous replication it cannot.
+
+Re-point replica1 at the new primary (it follows the new timeline):
+Re-join the OLD primary as a replica with pg_rewind (discards its divergent WAL, copies changed blocks):
+pg_rewind: Done!
+
+New topology — pg_stat_replication on replica2 (the new primary, :5435):
+ application_name |   state   | sync_state | replay_lsn 
+------------------+-----------+------------+------------
+ old_primary      | streaming | async      | 0/9402318
+ replica1         | streaming | async      | 0/9402318
+(2 rows)
+
+old_primary  in_recovery=t  timeline=2  balance 4000000001=53000.00
+replica1     in_recovery=t  timeline=2  balance 4000000001=53000.00
+replica2     in_recovery=f  timeline=2  balance 4000000001=53000.00
+
+======================================================================================
+CLEAN-UP
+======================================================================================
+all three nodes stopped (data left in /tmp/payhaven-p5-replication)

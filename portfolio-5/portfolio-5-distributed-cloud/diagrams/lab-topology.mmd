@@ -1,0 +1,9 @@
+flowchart LR
+    subgraph R["Replication lab (replication_lab.sh)"]
+        P[("primary :5433<br/>read/write")] -- "WAL stream<br/>slot replica1_slot" --> R1[("replica1 :5434<br/>read-only")]
+        P -- "WAL stream<br/>slot replica2_slot" --> R2[("replica2 :5435<br/>read-only")]
+    end
+    subgraph S["Sharding lab (sharding_lab.sh)"]
+        C["coordinator :5436<br/>postgres_fdw<br/>PARTITION BY HASH (customer_id)"] -- "remainder 0" --> S1[("shard1 :5437<br/>wallets + ledger")]
+        C -- "remainder 1" --> S2[("shard2 :5438<br/>wallets + ledger")]
+    end

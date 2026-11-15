@@ -1,0 +1,166 @@
+
+======================================================================================
+SETUP — 3 PostgreSQL nodes
+======================================================================================
+coordinator :5436 started
+shard1 :5437 started
+shard2 :5438 started
+coordinator: wallets and wallet_ledger hash-partitioned by customer_id into foreign tables on shard1/shard2
+Loading 20,000 wallets and 100,000 ledger lines THROUGH the coordinator (it routes each row)...
+loaded in 1077 ms
+
+======================================================================================
+S1  DATA DISTRIBUTION — hash partitioning spreads customers evenly
+======================================================================================
+ partition  | wallets | total_balance 
+------------+---------+---------------
+ wallets_s1 |   10023 | 1002300000.00
+ wallets_s2 |    9977 |  997700000.00
+(2 rows)
+
+Counted directly on each shard:  shard1=10023  shard2=9977
+
+======================================================================================
+S2  QUERY ROUTING — a single-customer query touches ONE shard (partition pruning)
+======================================================================================
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Foreign Scan on public.wallets_s1 wallets
+   Output: wallets.account_number, wallets.balance
+   Remote SQL: SELECT account_number, balance FROM public.wallets WHERE ((customer_id = 42))
+(3 rows)
+
+ served_by  | account_number |  balance  
+------------+----------------+-----------
+ wallets_s1 | 5000000042     | 100000.00
+(1 row)
+
+A query WITHOUT the shard key must ask every shard:
+                    QUERY PLAN                    
+--------------------------------------------------
+ Append
+   ->  Async Foreign Scan on wallets_s1 wallets_1
+   ->  Async Foreign Scan on wallets_s2 wallets_2
+(3 rows)
+
+
+======================================================================================
+S3  CO-LOCATED JOIN — wallets JOIN ledger is executed INSIDE each shard (partition-wise join pushdown)
+======================================================================================
+Because both tables are sharded by customer_id, matching rows are always on the same shard,
+so each shard can join its own pieces and the coordinator only merges the results.
+                                                                                                                 QUERY PLAN                                               
+ Limit
+   ->  Sort
+         Sort Key: (sum(l.amount)) DESC
+               ->  Sort
+                     Sort Key: w.customer_id, w.balance
+                     ->  Append
+                           ->  Async Foreign Scan
+                                 Relations: (public.wallets_s1 w_1) INNER JOIN (public.wallet_ledger_s1 l_1)
+                                 Remote SQL: SELECT r4.customer_id, r4.balance, r6.amount FROM (public.wallets r4 INNER JOIN public.wallet_ledger r6 ON (((r4.customer_id 
+                           ->  Async Foreign Scan
+                                 Relations: (public.wallets_s2 w_2) INNER JOIN (public.wallet_ledger_s2 l_2)
+                                 Remote SQL: SELECT r5.customer_id, r5.balance, r7.amount FROM (public.wallets r5 INNER JOIN public.wallet_ledger r7 ON (((r5.customer_id 
+ customer_id |  balance  | volume  
+-------------+-----------+---------
+        3748 | 100000.00 | 4880.00
+        1754 | 100000.00 | 4880.00
+        2751 | 100000.00 | 4880.00
+         757 | 100000.00 | 4880.00
+        4745 | 100000.00 | 4880.00
+(5 rows)
+
+'Relations: (wallets_sX w) INNER JOIN (wallet_ledger_sX l)' = the join was shipped to the shard as one remote query.
+
+======================================================================================
+S4  SCATTER-GATHER AGGREGATION — what can and cannot be pushed to the shards
+======================================================================================
+(a) Grouped BY the shard key: every group lives on one shard, so each shard computes final results in parallel
+                                                   QUERY PLAN                                                   
+ Limit
+   ->  Sort
+         Sort Key: (sum(wallet_ledger.amount)) DESC
+         ->  Append
+               ->  Async Foreign Scan
+                     Relations: Aggregate on (public.wallet_ledger_s1 wallet_ledger)
+                     Remote SQL: SELECT customer_id, count(*), sum(amount) FROM public.wallet_ledger GROUP BY 1
+               ->  Async Foreign Scan
+                     Relations: Aggregate on (public.wallet_ledger_s2 wallet_ledger_1)
+                     Remote SQL: SELECT customer_id, count(*), sum(amount) FROM public.wallet_ledger GROUP BY 1
+
+(b) A bank-wide total (no shard key): here PostgreSQL 16's postgres_fdw does NOT push the partial aggregates,
+    so every shard ships its rows and the coordinator aggregates — network traffic grows with data size.
+                               QUERY PLAN                               
+ Finalize Aggregate
+   ->  Append
+         ->  Partial Aggregate
+               ->  Foreign Scan on public.wallets_s1 wallets
+                     Remote SQL: SELECT balance FROM public.wallets
+         ->  Partial Aggregate
+               ->  Foreign Scan on public.wallets_s2 wallets_1
+                     Remote SQL: SELECT balance FROM public.wallets
+ wallets | total_customer_balances 
+---------+-------------------------
+   20000 |           2000000000.00
+(1 row)
+
+
+======================================================================================
+S5  CROSS-SHARD TRANSFER WITHOUT TWO-PHASE COMMIT — atomicity can break
+======================================================================================
+postgres_fdw commits each shard's sub-transaction one after another when the coordinator commits.
+If a LATER shard fails at commit, the EARLIER shard has already committed and cannot be undone.
+Both directions are tried; N60,000 pushes the receiver to N160,000, which its shard rejects at COMMIT.
+
+Transfer N60,000: customer 1 (on wallets_s1) -> customer 3 (on wallets_s2)
+  before: sender 100000.00  receiver 100000.00  total 200000.00
+  ERROR:  wallet 5000000003 would hold 160000.00, above the N150,000 tier limit
+  CONTEXT:  PL/pgSQL function public.max_balance_rule() line 4 at RAISE
+  after:  sender 40000.00  receiver 100000.00  total 140000.00  -> INCONSISTENT — N60,000 vanished: debit committed, credit rolled back
+
+Transfer N60,000: customer 4 (on wallets_s2) -> customer 2 (on wallets_s1)
+  before: sender 100000.00  receiver 100000.00  total 200000.00
+  ERROR:  wallet 5000000002 would hold 160000.00, above the N150,000 tier limit
+  CONTEXT:  PL/pgSQL function public.max_balance_rule() line 4 at RAISE
+  after:  sender 100000.00  receiver 100000.00  total 200000.00  -> consistent (both sides rolled back)
+
+======================================================================================
+S6  TWO-PHASE COMMIT (2PC) — the coordinator makes every shard PREPARE before anyone COMMITs
+======================================================================================
+
+Case 1: N30,000 from 1 (shard1) to 3 (shard2) — both shards can commit
+  phase 1 (PREPARE): shard1 -> OK
+                     shard2 -> OK
+  phase 2: both voted YES -> COMMIT PREPARED on both shards
+  balances: shard1 customer 1 = 70000.00   shard2 customer 3 = 130000.00   total = 200000.00
+
+Case 2: N60,000 more — shard2 would exceed N150,000 and votes NO at PREPARE
+  phase 1 (PREPARE): shard1 -> OK
+                     shard2 -> ERROR:  wallet 5000000003 would hold 190000.00, above the N150,000 tier limit
+  phase 2: a shard voted NO -> ROLLBACK PREPARED on every shard that had prepared
+  balances: shard1 customer 1 = 70000.00   shard2 customer 3 = 130000.00   total = 200000.00
+
+Case 3: the coordinator crashes BETWEEN the phases (both shards prepared, no decision sent)
+  in-doubt transactions left on the shards:
+       gid    |           prepared            |  owner   
+    ----------+-------------------------------+----------
+     xfer-003 | 2026-11-15 02:07:31.533931+01 | postgres
+    (1 row)
+    
+       gid    |           prepared            |  owner   
+    ----------+-------------------------------+----------
+     xfer-003 | 2026-11-15 02:07:31.541265+01 | postgres
+    (1 row)
+    
+  Meanwhile customer 1 tries a local payment on shard1 (lock_timeout 2 s):
+    ERROR:  canceling statement due to lock timeout
+  -> the prepared transaction still holds its row locks: 2PC is BLOCKING until the coordinator recovers.
+  Coordinator recovers, reads its decision log (both prepared -> commit) and finishes the job:
+  prepared transactions remaining: shard1=0 shard2=0
+  final balances: 1 = 69000.00   3 = 131000.00   total = 200000.00  (N200,000 — nothing lost)
+
+======================================================================================
+CLEAN-UP
+======================================================================================
+all nodes stopped (data left in /tmp/payhaven-p5-sharding)

@@ -1,0 +1,26 @@
+flowchart TB
+    U["Customers: mobile · web · USSD · partner API"] --> APP["PayHaven API services (stateless, autoscaled)"]
+    APP --> RC["Redis primary + replica (Sentinel)<br/>idempotency · rate limits · sessions · cache"]
+    APP --> MG["MongoDB 3-node replica set<br/>customer 360 · channel events"]
+    APP --> PGB["PgBouncer + HAProxy, Patroni/etcd failover<br/>writes → leader · reads → replicas"]
+
+    subgraph DC1["Lagos data centre A"]
+        PG1[("PostgreSQL LEADER<br/>ledger · balances")]
+        RO1[("async read replica<br/>statements · support")]
+    end
+    subgraph DC2["Lagos data centre B"]
+        PG2[("PostgreSQL SYNC standby<br/>quorum ANY 1")]
+        RO2[("async read replica<br/>reporting")]
+    end
+    subgraph DR["DR site, second Nigerian city"]
+        PG3[("PostgreSQL async standby")]
+        OBJ[("Encrypted backups<br/>base + WAL archive (PITR)")]
+    end
+    PGB --> PG1
+    PGB --> RO1
+    PGB --> RO2
+    PG1 == "synchronous WAL" ==> PG2
+    PG1 -- "async WAL" --> RO1
+    PG2 -- "cascading" --> RO2
+    PG1 -- "async WAL" --> PG3
+    PG1 -- "pgBackRest" --> OBJ
