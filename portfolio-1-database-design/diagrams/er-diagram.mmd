@@ -1,0 +1,127 @@
+erDiagram
+    CUSTOMERS ||--o{ CUSTOMER_ADDRESSES : "lives at"
+    CUSTOMERS ||--o{ KYC_DOCUMENTS : submits
+    STAFF |o--o{ KYC_DOCUMENTS : reviews
+    CUSTOMERS |o--o{ ACCOUNTS : owns
+    ACCOUNT_PRODUCTS |o--o{ ACCOUNTS : "governs limits of"
+    CUSTOMERS ||--o{ BENEFICIARIES : saves
+    BANKS ||--o{ BENEFICIARIES : "holds account of"
+    CUSTOMERS |o--o{ TRANSACTIONS : initiates
+    TRANSACTIONS ||--o{ LEDGER_ENTRIES : "posts as"
+    ACCOUNTS ||--o{ LEDGER_ENTRIES : "is debited/credited by"
+    TRANSACTIONS ||--o| EXTERNAL_TRANSFERS : "has NIP details"
+    BENEFICIARIES ||--o{ EXTERNAL_TRANSFERS : receives
+    TRANSACTIONS |o--o| TRANSACTIONS : reverses
+
+    CUSTOMERS {
+        bigint customer_id PK
+        char11 bvn UK
+        varchar first_name
+        varchar middle_name
+        varchar last_name
+        varchar email UK
+        varchar phone UK
+        date date_of_birth
+        smallint kyc_tier
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    CUSTOMER_ADDRESSES {
+        bigint address_id PK
+        bigint customer_id FK
+        varchar address_type
+        varchar line1
+        varchar city
+        varchar state
+    }
+    STAFF {
+        int staff_id PK
+        varchar staff_number UK
+        varchar full_name
+        varchar email UK
+        varchar role
+    }
+    KYC_DOCUMENTS {
+        bigint document_id PK
+        bigint customer_id FK
+        varchar document_type
+        varchar document_number
+        varchar status
+        int reviewed_by FK
+        timestamptz reviewed_at
+        varchar rejection_reason
+    }
+    ACCOUNT_PRODUCTS {
+        varchar product_code PK
+        varchar product_name UK
+        smallint min_kyc_tier
+        numeric daily_debit_limit
+        numeric max_balance
+        numeric interest_rate_pa
+    }
+    ACCOUNTS {
+        bigint account_id PK
+        char10 account_number UK
+        varchar account_category
+        bigint customer_id FK
+        varchar product_code FK
+        varchar account_name
+        char3 currency
+        numeric balance
+        varchar status
+        int version
+        timestamptz opened_at
+        timestamptz closed_at
+    }
+    BANKS {
+        varchar bank_code PK
+        varchar bank_name UK
+        boolean is_active
+    }
+    BENEFICIARIES {
+        bigint beneficiary_id PK
+        bigint customer_id FK
+        varchar bank_code FK
+        char10 account_number
+        varchar account_name
+        varchar nickname
+    }
+    TRANSACTIONS {
+        bigint transaction_id PK
+        varchar reference UK
+        varchar transaction_type
+        varchar status
+        numeric amount
+        numeric fee
+        char3 currency
+        varchar channel
+        bigint initiated_by FK
+        bigint reversal_of FK
+        timestamptz created_at
+        timestamptz completed_at
+    }
+    LEDGER_ENTRIES {
+        bigint entry_id PK
+        bigint transaction_id FK
+        bigint account_id FK
+        char6 direction
+        numeric amount
+        numeric balance_after
+        timestamptz created_at
+    }
+    EXTERNAL_TRANSFERS {
+        bigint transaction_id PK
+        bigint beneficiary_id FK
+        varchar nip_session_id UK
+        char2 response_code
+    }
+    AUDIT_LOG {
+        bigint audit_id PK
+        text table_name
+        text record_pk
+        char6 action
+        jsonb old_row
+        jsonb new_row
+        timestamptz changed_at
+    }
