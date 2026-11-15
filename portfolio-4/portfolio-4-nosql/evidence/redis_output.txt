@@ -1,0 +1,75 @@
+
+==========================================================================================
+R1  IDEMPOTENCY FAST-PATH — reject duplicate API requests before they reach PostgreSQL
+==========================================================================================
+  Key ph:idem:<reference>, value = request status, TTL 24h. SET … NX succeeds only for the first caller.
+
+  > SET ph:idem:PH-API-27ddd1b6 PROCESSING NX EX 86400             -> True
+  > SET ph:idem:PH-API-27ddd1b6 PROCESSING NX EX 86400  (retry)    -> None
+  > GET ph:idem:PH-API-27ddd1b6                                    -> {"status": "SUCCESSFUL", "txn_id": 123456}
+  > TTL ph:idem:PH-API-27ddd1b6                                    -> 86400
+
+  50 concurrent duplicates of PH-API-6d30a009: 1 accepted, 49 rejected as duplicates
+  Note: this is only a fast-path. The UNIQUE constraint on transactions.reference (Portfolio 3, E4) remains the
+  guarantee, because Redis data can be lost on failover; the database cannot be bypassed for money.
+
+==========================================================================================
+R2  RATE LIMITING — max 5 wrong-PIN attempts per customer per 10 minutes (sliding window)
+==========================================================================================
+  attempt 1: ALLOWED  (remaining 4)
+  attempt 2: ALLOWED  (remaining 3)
+  attempt 3: ALLOWED  (remaining 2)
+  attempt 4: ALLOWED  (remaining 1)
+  attempt 5: ALLOWED  (remaining 0)
+  attempt 6: BLOCKED  (retry in 600 s)
+  attempt 7: BLOCKED  (retry in 600 s)
+  attempt 8: BLOCKED  (retry in 600 s)
+  > ZCARD ph:rl:pin:customer:c3aa11                                -> 5
+  > PTTL ph:rl:pin:customer:c3aa11                                 -> 600000
+
+  Atomicity check: 100 concurrent requests against a limit of 10 transfers/minute for one device
+  allowed: 10  blocked: 90   (exactly 10 must be allowed)
+  same limiter without Lua (separate commands): allowed 13  -> LIMIT BYPASSED (race condition)
+
+==========================================================================================
+R3  CACHE-ASIDE — the app home screen (profile, balances, 30-day spend, last 5 transactions)
+==========================================================================================
+  first request: MISS (read from PostgreSQL, stored with SETEX 30 s); second request: HIT
+  PostgreSQL every time : p50 0.331 ms   p95 0.520 ms
+  Redis cache hit       : p50 0.072 ms   p95 0.090 ms   (4.6x faster at p50)
+  Invalidation: after a transfer commits, the app runs  DEL ph:cache:dashboard:<customer_id>  so the next read is fresh.
+  after DEL: MISS
+
+==========================================================================================
+R4  SESSIONS — hash per session, 15-minute idle timeout refreshed on every request
+==========================================================================================
+  > HGETALL ph:session:09fdf16e816e4…                              -> {'customer_id': '5000', 'device_id': 'dev-7f3a', 'channel': 'MOBILE', 'kyc_tier': '3', 'login_at': '1794703993'}
+  > TTL (after login)                                              -> 900
+  > TTL (1 s later)                                                -> 899
+  > EXPIRE 900 on activity, TTL                                    -> 900
+  > logout: DEL, EXISTS                                            -> 0
+
+==========================================================================================
+R5  LEADERBOARD — 'June 2026 savings challenge', customers ranked by total deposited
+==========================================================================================
+  loaded 24,612 June deposit events with ZINCRBY in 121 ms (pipelined); 17,246 savers on the board
+  ZREVRANGE board 0 4 WITHSCORES  (top 5):
+     1. cust:204320  Tunde Okafor           N89,830,322.41
+     2. cust:208056  Fatima Okafor          N33,659,457.89
+     3. cust:209057  Chinedu Okafor         N18,022,728.14
+     4. cust:214617  Ibrahim Okafor         N16,982,707.77
+     5. cust:212551  Ngozi Okafor           N14,009,258.13
+  ZREVRANK cust:218631: position 2,685 of 17,246  (O(log N), no table scan)
+  Live update when a deposit lands:  ZINCRBY ph:lb:savings:2026-06 <amount> cust:<id>
+
+==========================================================================================
+R6  NOTIFICATION FEED — newest 20 notifications per customer (capped list)
+==========================================================================================
+  > LLEN ph:feed:customer:5000                                     -> 20
+  > LRANGE 0 2 (newest first)                                      -> [30, 29, 28]
+
+==========================================================================================
+SERVER FACTS
+==========================================================================================
+  Redis 7.0.15  used_memory 2.77M  keys 13  maxmemory-policy noeviction  appendonly no
+  keys in ph:* namespace: 13

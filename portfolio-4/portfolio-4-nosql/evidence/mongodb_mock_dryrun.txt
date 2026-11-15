@@ -1,0 +1,160 @@
+MongoDB demo — mongomock (emulator)
+
+==========================================================================================
+1. CREATE COLLECTIONS — $jsonSchema validator, time-series collection, indexes
+==========================================================================================
+  [mock mode] $jsonSchema validation and time-series collections is not supported by the emulator — run against real MongoDB for this evidence
+  indexes on customers         : ['_id_', 'ix_device', 'ix_kyc', 'ux_account_number', 'ux_bvn', 'ux_phone']
+  indexes on transaction_events: ['_id_', 'ix_customer_ts']
+  indexes on otp_codes         : ['_id_', 'ttl_5_minutes']
+
+==========================================================================================
+2. MIGRATE PostgreSQL -> MongoDB (relational rows -> aggregate documents)
+==========================================================================================
+  customers: 3,000 documents in 16.8 s (from 6 relational tables: customers, customer_addresses, kyc_documents, staff, accounts, beneficiaries)
+  transaction_events: 20,000 events in 0.7 s
+
+  Example customer document:
+{'_id': 1,
+ 'bvn': '22100000001',
+ 'name': {'first': 'Adaeze', 'last': 'Okafor', 'middle': 'Chioma'},
+ 'email': 'adaeze.okafor@mail.example',
+ 'phone': '+2348031000001',
+ 'date_of_birth': datetime.datetime(1990, 4, 12, 0, 0),
+ 'kyc': {'tier': 3,
+         'status': 'ACTIVE',
+         'documents': [{'type': 'NIN',
+                        'number': '70000000001',
+                        'status': 'VERIFIED',
+                        'submitted_at': datetime.datetime(2026, 1, 5, 8, 20),
+                        'reviewed_by': 'PH-0001',
+                        'reviewed_at': datetime.datetime(2026, 1, 5, 9, 2)},
+                       {'type': 'UTILITY_BILL',
+                        'number': 'IKEDC-558201',
+                        'status': 'VERIFIED',
+                        'submitted_at': datetime.datetime(2026, 1, 5, 8, 25),
+                        'reviewed_by': 'PH-0001',
+                        'reviewed_at': datetime.datetime(2026, 1, 5, 9, 5)}]},
+ 'addresses': [{'type': 'RESIDENTIAL',
+                'line1': '14 Admiralty Way, Lekki Phase 1',
+                'city': 'Lekki',
+                'state': 'Lagos'},
+               {'type': 'WORK',
+                'line1': '3 Idowu Taylor Street',
+                'city': 'Victoria Island',
+                'state': 'Lagos'}],
+ 'accounts': [{'account_number': '1000000011',
+               'product': 'PH_TIER3',
+               'currency': 'NGN',
+               'status': 'ACTIVE',
+               'opened_at': datetime.datetime(2026, 1, 5, 9, 10)},
+              {'account_number': '1000000012',
+               'product': 'PH_SAVE',
+               'currency': 'NGN',
+               'status': 'ACTIVE',
+               'opened_at': datetime.datetime(2026, 1, 6, 7, 0)}],
+ 'beneficiaries': [{'bank_code': '058',
+                    'bank': 'Guaranty Trust Bank',
+                    'account_number': '0123456789',
+                    'name': 'OBINNA OKAFOR'}],
+ 'devices': [{'device_id': 'dev-356a192b79',
+              'os': 'iOS 18',
+              'first_seen': datetime.datetime(2026, 1, 5, 8, 12)}],
+ 'preferences': {'language': 'yo', 'notify': {'sms': True, 'push': True, 'email': False}},
+ 'created_at': datetime.datetime(2026, 1, 5, 8, 12),
+ 'schema_version': 1}
+
+  Example MOBILE event:
+{'ts': datetime.datetime(2026, 6, 30, 22, 45, 46),
+ 'meta': {'customer_id': 201027, 'channel': 'MOBILE'},
+ 'reference': 'PH-B-00999946',
+ 'type': 'EXTERNAL_TRANSFER',
+ 'status': 'PENDING',
+ 'amount': 489.98,
+ 'fee': 10.75,
+ 'mobile': {'device_id': 'dev-26f5419725',
+            'app_version': '4.2.0',
+            'geo': {'type': 'Point', 'coordinates': [3.3534, 7.3945]}},
+ 'nip': {'session_id': None, 'response_code': None, 'destination_bank': '058'}}
+
+  Example USSD event:
+{'ts': datetime.datetime(2026, 6, 30, 21, 41, 47, 91000),
+ 'meta': {'customer_id': 200394, 'channel': 'USSD'},
+ 'reference': 'PH-B-00104297',
+ 'type': 'INTERNAL_TRANSFER',
+ 'status': 'SUCCESSFUL',
+ 'amount': 225.41,
+ 'fee': 0.0,
+ 'ussd': {'telco': 'MTN', 'short_code': '*7788#', 'session_id': 'U2145060'}}
+
+==========================================================================================
+3. SCHEMA VALIDATION — flexible, but not schemaless
+==========================================================================================
+  [mock mode] $jsonSchema validation is not supported by the emulator — run against real MongoDB for this evidence
+
+==========================================================================================
+4. QUERIES AND AGGREGATION PIPELINES
+==========================================================================================
+
+  Q1  Customer-360 lookup by phone (support agent) — ONE read returns the whole profile
+      found Adaeze Okafor with 2 account(s), 2 KYC doc(s), 1 device(s) in 2.51 ms
+      (the same view in PostgreSQL joins 6 tables)
+
+  Q2  Which customer owns account number X? (multikey index on accounts.account_number)
+      1000000011 -> customer 1 Adaeze Okafor
+
+  Q3  KYC funnel — documents by type and status ($unwind + $group)
+      NIN             SUBMITTED       1
+      NIN             VERIFIED        5
+      PASSPORT        VERIFIED        1
+      UTILITY_BILL    VERIFIED        1
+      VOTERS_CARD     REJECTED        1
+
+  Q4  Customers by KYC tier, with share that run a business ($group + $cond)
+      tier 1:   1,490 customers,      0 with a business profile
+      tier 2:     905 customers,      0 with a business profile
+      tier 3:     605 customers,    203 with a business profile
+
+  Q5  FRAUD SIGNAL — devices used by 3 or more different customers ($unwind + $group + $addToSet)
+      dev-ring-040     shared by   6 customers e.g. [200007, 200507, 201007, 201507, 202007, 202507]
+
+  Q6  Monthly volume by channel from the time-series events ($match on ts + $group)
+      2026-04  MOBILE    1,521 txns  N    136,598,224.32
+      2026-04  USSD        360 txns  N     31,011,581.10
+      2026-04  WEB         343 txns  N     26,338,125.75
+      2026-04  API         112 txns  N     11,246,179.92
+      2026-05  MOBILE    1,498 txns  N    122,451,760.15
+      2026-05  WEB         356 txns  N     33,318,587.95
+      2026-05  USSD        347 txns  N     23,855,423.79
+      2026-05  API         108 txns  N      8,445,837.83
+      2026-06  MOBILE    1,491 txns  N    117,054,738.74
+      2026-06  USSD        368 txns  N     31,457,051.44
+      2026-06  WEB         311 txns  N     25,944,229.61
+      2026-06  API         116 txns  N     14,809,136.38
+
+  Q7  Polymorphic fields: USSD volume by telco (field exists only on USSD events — no schema change needed)
+      9mobile      808
+      MTN          800
+      Glo          796
+      Airtel       734
+
+  Q8  NIP failures by destination bank (nested sub-document only on external transfers)
+      bank 011:  1,058 transfers,   19 failed (1.8%)
+      bank 033:  1,080 transfers,   30 failed (2.8%)
+      bank 044:    970 transfers,   22 failed (2.3%)
+      bank 057:  1,091 transfers,   27 failed (2.5%)
+      bank 058:  1,153 transfers,   20 failed (1.7%)
+
+  Q9  $lookup (join) — last 3 events of one customer with their name. Possible, but it is the
+      exception: the model embeds what is read together so most reads need no join.
+      {'ts': datetime.datetime(2026, 6, 30, 22, 46, 4), 'type': 'EXTERNAL_TRANSFER', 'amount': 1943.32, 'name': 'Adaeze'}
+      {'ts': datetime.datetime(2026, 6, 10, 8, 44, 5, 417000), 'type': 'EXTERNAL_TRANSFER', 'amount': 139.99, 'name': 'Adaeze'}
+      {'ts': datetime.datetime(2026, 5, 21, 13, 48, 37, 411000), 'type': 'INTERNAL_TRANSFER', 'amount': 3596.63, 'name': 'Adaeze'}
+
+  Q10 TTL index — OTP codes delete themselves 5 minutes after created_at
+      inserted 1 OTP; index ttl_5_minutes has expireAfterSeconds = 300
+
+==========================================================================================
+5. EXPLAIN — index vs collection scan
+==========================================================================================
+  [mock mode] explain() is not supported by the emulator — run against real MongoDB for this evidence
