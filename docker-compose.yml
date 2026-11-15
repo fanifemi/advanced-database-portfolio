@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: payhaven-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payhaven
+      TZ: Africa/Lagos
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Portfolio 4 — document store
+  mongo:
+    image: mongo:7
+    container_name: payhaven-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+  # Portfolio 4 — key-value store (AOF persistence, flushed every second)
+  redis:
+    image: redis:7
+    container_name: payhaven-redis
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+  mongodata:
